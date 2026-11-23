@@ -123,7 +123,8 @@ module omr_video (
     reg [2:0] phase = 0;
     reg [9:0] x = 0;
     reg [8:0] y = 0;
-    reg [16:0] display_addr = 0;
+    // Read each camera row right to left for TFT preview only.
+    reg [16:0] display_addr = 17'd479;
     wire active = x >= 42 && x < 522 && y >= 12 && y < 284;
     wire guide = ((x == 66 || x == 497) && y >= 28 && y <= 267) ||
                  ((y == 28 || y == 267) && x >= 66 && x <= 497);
@@ -174,7 +175,7 @@ module omr_video (
             phase <= 0;
             x <= 0;
             y <= 0;
-            display_addr <= 0;
+            display_addr <= 17'd479;
             read_ack <= 0;
             TFTLCD_D <= 0;
             TFTLCD_Hsync <= 0;
@@ -187,7 +188,7 @@ module omr_video (
                 TFTLCD_D <= !active ? 16'd0 :
                             result_view ? (y < 24 || paint ? banner_color : 16'h0024) :
                             guide ? (aligned_sync[1] ? 16'h07e0 : 16'hf800) :
-                            valid_sync[1] ? read_data : 16'h001f;
+                            valid_sync[1] ? {read_data[4:0], read_data[10:5], read_data[15:11]} : 16'h001f;
             end
             if (phase == 4) begin
                 if (command[30] != read_ack) begin
@@ -198,9 +199,13 @@ module omr_video (
                 if (x == 522)
                     y <= y == 284 ? 0 : y + 1'b1;
                 if (x == 522 && y == 284)
-                    display_addr <= 0;
-                else if (active)
-                    display_addr <= display_addr + 1'b1;
+                    display_addr <= 17'd479;
+                else if (active) begin
+                    if (x != 521)
+                        display_addr <= display_addr - 1'b1;
+                    else if (y != 283)
+                        display_addr <= display_addr + 17'd959;
+                end
             end
         end
     end
