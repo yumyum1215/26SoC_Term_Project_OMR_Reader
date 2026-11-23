@@ -173,12 +173,14 @@ static int capture_aligned(uint16_t *destination)
     video_write((video_command & CMD_READ) | CMD_REQUIRE_ALIGNED);
     video_write(video_command | CMD_HOLD);
     int ok = wait_video(STAT_HELD, STAT_HELD, 450);
-    for (u32 address = 0; ok && address < OMR_WIDTH * OMR_HEIGHT; ++address) {
+    /* The mounted TFT presents the sensor frame rotated relative to PS memory. */
+    const u32 pixels = OMR_WIDTH * OMR_HEIGHT;
+    for (u32 address = 0; ok && address < pixels; ++address) {
         const u32 toggle = (video_command ^ CMD_READ) & CMD_READ;
         video_write(CMD_HOLD | CMD_REQUIRE_ALIGNED | toggle | address);
         ok = wait_video(STAT_READ, toggle ? STAT_READ : 0U, 5);
         if (ok)
-            destination[address] = (uint16_t)video_status();
+            destination[pixels - 1U - address] = (uint16_t)video_status();
     }
     video_write(video_command & CMD_READ);
     return wait_video(STAT_HELD, 0, 450) && ok;
@@ -508,3 +510,5 @@ int main(void)
             tft_view(4);
     }
 }
+
+
