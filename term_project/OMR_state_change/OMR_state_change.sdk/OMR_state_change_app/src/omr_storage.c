@@ -7,16 +7,58 @@
 
 static FATFS sd;
 
-static void round_path(char path[16], unsigned round)
+#define DATA_DIR "0:/DATA"
+
+static int student_record(const char *id)
 {
-    snprintf(path, 16, "0:/R%07u", round);
+    return strlen(id) == 8 && (id[0] == 'G' || id[0] == 'B' || id[0] == 'T') &&
+           id[1] >= '1' && id[1] <= '3' && id[2] == 'C' && id[5] == 'N' &&
+           isdigit((unsigned char)id[3]) && isdigit((unsigned char)id[4]) &&
+           isdigit((unsigned char)id[6]) && isdigit((unsigned char)id[7]);
 }
 
-static void result_path(char path[48], unsigned round, const char *id, const char *file)
+static void record_path(char path[48], const char *id, const char *file)
 {
-    snprintf(path, 48, "0:/R%07u/%s/%s", round, id, file);
+    if (file)
+        snprintf(path, 48, DATA_DIR "/%s/%s", id, file);
+    else
+        snprintf(path, 48, DATA_DIR "/%s", id);
 }
 
+static int is_missing(FRESULT status)
+{
+    return status == FR_NO_FILE || status == FR_NO_PATH;
+}
+
+/* Remove only files owned by the application. */
+static int remove_record(const char *id)
+{
+    static const char *const files[] = {"FRONT.BMP", "BACK.BMP", "RESULT.TXT", "REVIEW.TXT"};
+    char path[48];
+    for (unsigned i = 0; i < sizeof files / sizeof files[0]; ++i) {
+        record_path(path, id, files[i]);
+        const FRESULT status = f_unlink(path);
+        if (status != FR_OK && !is_missing(status))
+            return 0;
+    }
+    record_path(path, id, NULL);
+    const FRESULT status = f_unlink(path);
+    return status == FR_OK || is_missing(status);
+}
+
+static int recover_record(const char *backup_id)
+{
+    char id[9], live[48], backup[48];
+    FILINFO info;
+    strcpy(id, backup_id);
+    id[0] = 'G';
+    record_path(live, id, NULL);
+    record_path(backup, backup_id, NULL);
+    const FRESULT status = f_stat(live, &info);
+    if (is_missing(status))
+        return f_rename(backup, live) == FR_OK;
+    return status == FR_OK && (info.fattrib & AM_DIR) && remove_record(backup_id);
+}
 static int read_text(const char *path, char *text, UINT capacity)
 {
     FIL file;
@@ -87,62 +129,82 @@ static int parse_exam(char *text, OmrExam *exam)
     return max_score <= 9999U;
 }
 
-int omr_storage_clear(OmrRound *round)
-{
-    char path[16];
-    if (round->round >= 9999999U)
-        return 0;
-    const unsigned next = round->round + 1;
-    round_path(path, next);
-    if (f_mkdir(path) != FR_OK)
-        return 0;
-    *round = (OmrRound){next, 0, 0};
-    return 1;
-}
-
-int omr_storage_open(OmrLayout *subject_layout, OmrRound *round)
+int omr_storage_clear(void)
 {
     DIR dir;
     FILINFO item;
-    char settings[320], path[48], record[400];
-    *round = (OmrRound){0, 0, 0};
-    if (f_mount(&sd, "0:", 1) != FR_OK ||
-        !read_text("0:/KEY.TXT", settings, sizeof settings) ||
-        !parse_layout(settings, subject_layout) ||
-        f_opendir(&dir, "0:/") != FR_OK)
+    if (f_opendir(&dir, DATA_DIR) != FR_OK)
         return 0;
 
     FRESULT scan;
+    int ok = 1;
     while ((scan = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
-        if (!(item.fattrib & AM_DIR) || item.fname[0] != 'R' || strlen(item.fname) != 8)
-            continue;
-        char *end;
-        const unsigned number = (unsigned)strtoul(item.fname + 1, &end, 10);
-        if (*end == '\0' && number > round->round)
-            round->round = number;
+        if ((item.fattrib & AM_DIR) && student_record(item.fname) && !remove_record(item.fname))
+            ok = 0;
     }
-    f_closedir(&dir);
-    if (scan != FR_OK)
-        return 0;
-    if (round->round == 0)
-        return omr_storage_clear(round);
-
-    round_path(path, round->round);
-    if (f_opendir(&dir, path) != FR_OK)
-        return 0;
-    while ((scan = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
-        if (!(item.fattrib & AM_DIR) || item.fname[0] == '.')
-            continue;
-        result_path(path, round->round, item.fname, "RESULT.TXT");
-        if (read_text(path, record, sizeof record)) {
-            ++round->graded;
-            round->total_points += (unsigned)strtoul(record, NULL, 10);
-        }
-    }
-    f_closedir(&dir);
-    return scan == FR_OK;
+    return f_closedir(&dir) == FR_OK && scan == FR_OK && ok;
 }
 
+int omr_storage_summary(OmrSummary *summary)
+{
+    DIR dir;
+    FILINFO item;
+    FRESULT scan;
+    int ok = 1;
+    char path[48], record[400];
+    OmrSummary result = {0, 0};
+    if (f_opendir(&dir, DATA_DIR) != FR_OK)
+        return 0;
+
+    /* Restore the previous complete record if an overwrite was interrupted. */
+    while ((scan = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
+        if ((item.fattrib & AM_DIR) && student_record(item.fname) &&
+            item.fname[0] == 'B' && !recover_record(item.fname))
+            ok = 0;
+    }
+    if (f_closedir(&dir) != FR_OK || scan != FR_OK || !ok ||
+        f_opendir(&dir, DATA_DIR) != FR_OK)
+        return 0;
+
+    while ((scan = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
+        if (!(item.fattrib & AM_DIR) || !student_record(item.fname) || item.fname[0] != 'G')
+            continue;
+        record_path(path, item.fname, "RESULT.TXT");
+        FILINFO file_info;
+        const FRESULT status = f_stat(path, &file_info);
+        if (is_missing(status))
+            continue; /* A review-only submission does not enter the total. */
+        if (status != FR_OK || !read_text(path, record, sizeof record)) {
+            ok = 0;
+            continue;
+        }
+        char *end;
+        const unsigned long score = strtoul(record, &end, 10);
+        if (score > 9999U || end == record || (*end != '\r' && *end != '\n')) {
+            ok = 0;
+            continue;
+        }
+        ++result.graded;
+        result.total_points += (unsigned)score;
+    }
+    if (f_closedir(&dir) != FR_OK || scan != FR_OK || !ok)
+        return 0;
+
+    *summary = result;
+    return 1;
+}
+
+int omr_storage_open(OmrLayout *subject_layout, OmrSummary *summary)
+{
+    char settings[320];
+    if (f_mount(&sd, "0:", 1) != FR_OK ||
+        !read_text("0:/KEY.TXT", settings, sizeof settings) ||
+        !parse_layout(settings, subject_layout))
+        return 0;
+
+    const FRESULT status = f_mkdir(DATA_DIR);
+    return (status == FR_OK || status == FR_EXIST) && omr_storage_summary(summary);
+}
 int omr_storage_load_subject(unsigned subject, OmrExam *exam)
 {
     char path[16], settings[320];
@@ -155,14 +217,6 @@ int omr_storage_load_subject(unsigned subject, OmrExam *exam)
     *exam = loaded;
     return 1;
 }
-int omr_storage_duplicate(const OmrRound *round, const char *id)
-{
-    char path[48];
-    FILINFO item;
-    result_path(path, round->round, id, "RESULT.TXT");
-    return f_stat(path, &item) == FR_OK;
-}
-
 static int write_bytes(FIL *file, const void *data, UINT length)
 {
     UINT written = 0;
@@ -200,25 +254,37 @@ static int save_bmp(const char *path, const uint16_t *frame)
     return f_close(&file) == FR_OK && ok;
 }
 
-int omr_storage_save(OmrRound *round, const char *id, const char *name,
+int omr_storage_save(const char *id, const char *name,
                      const char *timestamp, const OmrIdentity *identity,
                      unsigned subject, unsigned score, int review,
                      const int answers[12], const uint16_t *front,
                      const uint16_t *back)
 {
-    char path[48], temp[48], record[370];
+    char path[48], live[48], staging[48], backup[48], record[370];
+    char stage_id[9], backup_id[9];
     FIL file;
-    if (omr_storage_duplicate(round, id))
+    FILINFO info;
+    if (!student_record(id) || id[0] != 'G')
         return 0;
-    snprintf(path, sizeof path, "0:/R%07u/%s", round->round, id);
-    const FRESULT dir_status = f_mkdir(path);
-    if (dir_status != FR_OK && dir_status != FR_EXIST)
+    strcpy(stage_id, id);
+    strcpy(backup_id, id);
+    stage_id[0] = 'T';
+    backup_id[0] = 'B';
+    record_path(live, id, NULL);
+    record_path(staging, stage_id, NULL);
+    record_path(backup, backup_id, NULL);
+
+    const FRESULT backup_status = f_stat(backup, &info);
+    if (!is_missing(backup_status) &&
+        (backup_status != FR_OK || !(info.fattrib & AM_DIR) || !recover_record(backup_id)))
+        return 0;
+    if (!remove_record(stage_id) || f_mkdir(staging) != FR_OK)
         return 0;
 
-    result_path(path, round->round, id, "FRONT.BMP");
+    record_path(path, stage_id, "FRONT.BMP");
     if (!save_bmp(path, front))
         return 0;
-    result_path(path, round->round, id, "BACK.BMP");
+    record_path(path, stage_id, "BACK.BMP");
     if (!save_bmp(path, back))
         return 0;
 
@@ -227,27 +293,27 @@ int omr_storage_save(OmrRound *round, const char *id, const char *name,
         "STATUS=%s\r\nANSWER=%d %d %d %d %d %d %d %d %d %d / %d %d\r\n",
         score, id, name, identity->grade, identity->class_number, identity->student_number,
         subject, timestamp, review ? "REVIEW" : "GRADED", answers[0], answers[1], answers[2], answers[3],
-        answers[4], answers[5], answers[6], answers[7], answers[8], answers[9],
-        answers[10], answers[11]);
-    result_path(temp, round->round, id, "RESULT.TMP");
-    result_path(path, round->round, id, review ? "REVIEW.TXT" : "RESULT.TXT");
-    if (review)
-        (void)f_unlink(path);
+        answers[4], answers[5], answers[6], answers[7], answers[8], answers[9], answers[10], answers[11]);
+    record_path(path, stage_id, review ? "REVIEW.TXT" : "RESULT.TXT");
     if (size < 0 || size >= (int)sizeof record ||
-        f_open(&file, temp, FA_CREATE_ALWAYS | FA_WRITE) != FR_OK)
+        f_open(&file, path, FA_CREATE_NEW | FA_WRITE) != FR_OK)
         return 0;
     const int wrote = write_bytes(&file, record, (UINT)size);
     const FRESULT closed = f_close(&file);
-    if (!wrote || closed != FR_OK || f_rename(temp, path) != FR_OK)
+    if (!wrote || closed != FR_OK)
         return 0;
-    if (!review) {
-        ++round->graded;
-        round->total_points += score;
+
+    const FRESULT live_status = f_stat(live, &info);
+    const int replacing = live_status == FR_OK;
+    if ((!replacing && !is_missing(live_status)) ||
+        (replacing && (!(info.fattrib & AM_DIR) || f_rename(live, backup) != FR_OK)))
+        return 0;
+    if (f_rename(staging, live) != FR_OK) {
+        if (replacing)
+            (void)f_rename(backup, live);
+        return 0;
     }
+    if (replacing)
+        (void)remove_record(backup_id);
     return 1;
 }
-
-
-
-
-

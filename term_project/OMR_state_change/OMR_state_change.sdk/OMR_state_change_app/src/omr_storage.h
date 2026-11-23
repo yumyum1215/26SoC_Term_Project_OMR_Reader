@@ -13,16 +13,15 @@ typedef struct {
 } OmrExam;
 
 typedef struct {
-    unsigned round;
     unsigned graded;
     unsigned total_points;
-} OmrRound;
+} OmrSummary;
 
-int omr_storage_open(OmrLayout *subject_layout, OmrRound *round);
+int omr_storage_open(OmrLayout *subject_layout, OmrSummary *summary);
 int omr_storage_load_subject(unsigned subject, OmrExam *exam);
-int omr_storage_clear(OmrRound *round);
-int omr_storage_duplicate(const OmrRound *round, const char *id);
-int omr_storage_save(OmrRound *round, const char *id, const char *name,
+int omr_storage_summary(OmrSummary *summary);
+int omr_storage_clear(void);
+int omr_storage_save(const char *id, const char *name,
                      const char *timestamp, const OmrIdentity *identity,
                      unsigned subject, unsigned score, int review,
                      const int answers[12], const uint16_t *front,

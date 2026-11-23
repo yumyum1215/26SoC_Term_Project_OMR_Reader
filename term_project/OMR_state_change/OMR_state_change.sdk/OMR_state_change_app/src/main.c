@@ -48,7 +48,7 @@ static const char *const subject_names[OMR_LAST_SUBJECT] = {
     "KOREAN", "MATH", "ENGLISH", "KOREAN HISTORY",
     "INTEGRATED SCIENCE", "INTEGRATED SOCIAL STUDIES"
 };
-static OmrRound round_info;
+static OmrSummary totals;
 static XScuGic gic;
 static XIicPs rtc;
 static XUartPs uart;
@@ -109,7 +109,7 @@ static u32 bcd4(unsigned value)
 
 static void summary_digits(void)
 {
-    Xil_Out32(FND, (bcd4(expected_count) << 16) | bcd4(round_info.graded));
+    Xil_Out32(FND, (bcd4(expected_count) << 16) | bcd4(totals.graded));
 }
 
 static void video_write(u32 command)
@@ -297,9 +297,10 @@ static int save_score(unsigned *score)
     const char printed_id[6] = {student_id[1], student_id[3], student_id[4],
                                 student_id[6], student_id[7], '\0'};
     const char *name = strcmp(printed_id, named_student) == 0 ? student_name : "";
-    if (!omr_storage_save(&round_info, student_id, name, stamp, &active_identity,
+    if (!omr_storage_save(student_id, name, stamp, &active_identity,
                           active_subject, *score, review, answers, front, back))
         return 0;
+    (void)omr_storage_summary(&totals);
     return review ? -1 : 1;
 }
 
@@ -314,7 +315,7 @@ int main(void)
         rtc_ready = XIicPs_SetSClk(&rtc, 100000) == XST_SUCCESS;
 
     screen("OMR STARTUP", "INIT SD/CAMERA");
-    sd_ready = omr_storage_open(&subject_layout, &round_info);
+    sd_ready = omr_storage_open(&subject_layout, &totals);
     Xil_Out32(SERVO, FRONT_PULSE_US);
     video_write(0);
     summary_digits();
@@ -353,19 +354,25 @@ int main(void)
             }
 
             if (state == FRONT_IDLE && (events & BUTTON_SUMMARY)) {
-                char count[17];
-                snprintf(count, sizeof count, "COUNT %u", round_info.graded);
-                screen("ROUND SUMMARY", count);
-                summary_digits();
-                tft_view(2);
-                snprintf(count, sizeof count, "POINTS %u", round_info.total_points);
-                serial(count);
-                serial("\r\n");
-                state = SUMMARY;
+                if (sd_ready && omr_storage_summary(&totals)) {
+                    char count[24];
+                    snprintf(count, sizeof count, "COUNT %u", totals.graded);
+                    screen("DATA SUMMARY", count);
+                    summary_digits();
+                    tft_view(2);
+                    snprintf(count, sizeof count, "POINTS %u", totals.total_points);
+                    serial(count);
+                    serial("\r\n");
+                    state = SUMMARY;
+                } else {
+                    screen("SUMMARY FAILED", "CHECK SD DATA");
+                    state = ERROR;
+                }
                 until = after_ms(2500);
             } else if (state == FRONT_IDLE && (events & BUTTON_CLEAR_CANCEL)) {
-                if (sd_ready && omr_storage_clear(&round_info)) {
-                    screen("NEW ROUND", "SUMMARY CLEARED");
+                if (sd_ready && omr_storage_clear()) {
+                    totals = (OmrSummary){0, 0};
+                    screen("DATA RESET", "RECORDS CLEARED");
                     summary_digits();
                     tft_view(3);
                     state = CLEARED;
@@ -387,8 +394,7 @@ int main(void)
                         card_student_id(&identity, candidate_id);
                     if (!candidate_id[0]) {
                         screen("STUDENT ID ERROR", "CHECK CARD MARKS");
-                    } else if (omr_storage_duplicate(&round_info, candidate_id)) {
-                        screen("ALREADY GRADED", candidate_id);
+
                     } else if (subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT) {
                         screen("SUBJECT CODE ERR", "USE CODES 01-06");
                     } else if (!omr_storage_load_subject((unsigned)subject, &exam)) {
