@@ -201,7 +201,8 @@ static int save_bmp(const char *path, const uint16_t *frame)
 }
 
 int omr_storage_save(OmrRound *round, const char *id, const char *name,
-                     const char *timestamp, unsigned subject, unsigned score, int review,
+                     const char *timestamp, const OmrIdentity *identity,
+                     unsigned subject, unsigned score, int review,
                      const int answers[12], const uint16_t *front,
                      const uint16_t *back)
 {
@@ -222,9 +223,10 @@ int omr_storage_save(OmrRound *round, const char *id, const char *name,
         return 0;
 
     const int size = snprintf(record, sizeof record,
-        "%u\r\nID=%s\r\nNAME=%s\r\nSUBJECT=%02u\r\nRTC=%s\r\n"
+        "%u\r\nID=%s\r\nNAME=%s\r\nGRADE=%u\r\nCLASS=%02u\r\nNUMBER=%02u\r\nSUBJECT=%02u\r\nRTC=%s\r\n"
         "STATUS=%s\r\nANSWER=%d %d %d %d %d %d %d %d %d %d / %d %d\r\n",
-        score, id, name, subject, timestamp, review ? "REVIEW" : "GRADED", answers[0], answers[1], answers[2], answers[3],
+        score, id, name, identity->grade, identity->class_number, identity->student_number,
+        subject, timestamp, review ? "REVIEW" : "GRADED", answers[0], answers[1], answers[2], answers[3],
         answers[4], answers[5], answers[6], answers[7], answers[8], answers[9],
         answers[10], answers[11]);
     result_path(temp, round->round, id, "RESULT.TMP");

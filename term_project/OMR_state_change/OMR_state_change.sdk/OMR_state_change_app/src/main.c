@@ -55,7 +55,8 @@ static XUartPs uart;
 static u32 video_command;
 static volatile u32 pending_buttons, previous_buttons;
 static unsigned expected_count;
-static char student_id[9], student_name[33];
+static OmrIdentity active_identity;
+static char student_id[9], named_student[6], student_name[33];
 static int sd_ready, rtc_ready;
 
 static void serial(const char *text)
@@ -245,14 +246,14 @@ static void uart_input(int allow_student_change)
                 while (isdigit((unsigned char)*name))
                     ++name;
                 const size_t id_length = (size_t)(name - digits);
-                if (id_length >= 1 && id_length <= 8 && *name == ' ' &&
+                if (id_length == 5 && *name == ' ' &&
                     name[1] && strlen(name + 1) < sizeof student_name) {
-                    memcpy(student_id, digits, id_length);
-                    student_id[id_length] = '\0';
+                    memcpy(named_student, digits, id_length);
+                    named_student[id_length] = '\0';
                     strcpy(student_name, name + 1);
-                    serial("Student selected.\r\n");
+                    serial("Name recorded for that card ID.\r\n");
                 } else
-                    serial("Use ID <1-8 digits> <name>.\r\n");
+                    serial("Use ID <grade,class,number as 5 digits> <name>.\r\n");
             } else
                 serial("Use TOTAL <count> or ID <digits> <name> while idle.\r\n");
             length = 0;
@@ -269,6 +270,18 @@ static void uart_input(int allow_student_change)
     }
 }
 
+static void card_student_id(const OmrIdentity *identity, char id[9])
+{
+    id[0] = 'G';
+    id[1] = (char)('0' + identity->grade);
+    id[2] = 'C';
+    id[3] = (char)('0' + identity->class_number / 10);
+    id[4] = (char)('0' + identity->class_number % 10);
+    id[5] = 'N';
+    id[6] = (char)('0' + identity->student_number / 10);
+    id[7] = (char)('0' + identity->student_number % 10);
+    id[8] = '\0';
+}
 static int save_score(unsigned *score)
 {
     char stamp[32];
@@ -281,7 +294,10 @@ static int save_score(unsigned *score)
             *score += exam.points[i];
     }
     rtc_timestamp(stamp);
-    if (!omr_storage_save(&round_info, student_id, student_name, stamp,
+    const char printed_id[6] = {student_id[1], student_id[3], student_id[4],
+                                student_id[6], student_id[7], '\0'};
+    const char *name = strcmp(printed_id, named_student) == 0 ? student_name : "";
+    if (!omr_storage_save(&round_info, student_id, name, stamp, &active_identity,
                           active_subject, *score, review, answers, front, back))
         return 0;
     return review ? -1 : 1;
@@ -306,7 +322,7 @@ int main(void)
         screen("IRQ INIT ERROR", "CHECK HARDWARE");
         return 1;
     }
-    serial("OMR: TOTAL <count>, ID <student number> <name>\r\n");
+    serial("OMR: TOTAL <count>, ID <grade,class,number as 5 digits> <name>\r\n");
 
     State state = FRONT_IDLE;
     XTime until = after_ms(SETTLE_MS);
@@ -330,8 +346,6 @@ int main(void)
                     screen("BACK SIDE", ready ? "READY - PRESS 2" : "ALIGN IN BOX");
                 else if (!sd_ready)
                     screen("SD / KEY ERROR", "CHECK KEY.TXT");
-                else if (!student_id[0])
-                    screen("FRONT SIDE", "ENTER ID VIA UART");
                 else
                     screen("FRONT SIDE", ready ? "READY - PRESS 1" : "ALIGN IN BOX");
                 old_ready = ready;
@@ -364,15 +378,18 @@ int main(void)
                 screen("CANCELLED", "RETURNING FRONT");
                 state = ERROR;
                 until = after_ms(1500);
-            } else if ((events & capture_button) && ready && sd_ready && student_id[0]) {
-                if (state == FRONT_IDLE && omr_storage_duplicate(&round_info, student_id)) {
-                    screen("ALREADY GRADED", "SELECT OTHER ID");
-                    state = ERROR;
-                    until = after_ms(2200);
-                } else if (state == FRONT_IDLE && capture_aligned(front)) {
+            } else if ((events & capture_button) && ready && sd_ready) {
+                if (state == FRONT_IDLE && capture_aligned(front)) {
                     const int subject = omr_subject(front, &subject_layout);
-                    char key_name[17];
-                    if (subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT) {
+                    char key_name[17], candidate_id[9] = "";
+                    OmrIdentity identity;
+                    if (omr_identity(front, &subject_layout, &identity))
+                        card_student_id(&identity, candidate_id);
+                    if (!candidate_id[0]) {
+                        screen("STUDENT ID ERROR", "CHECK CARD MARKS");
+                    } else if (omr_storage_duplicate(&round_info, candidate_id)) {
+                        screen("ALREADY GRADED", candidate_id);
+                    } else if (subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT) {
                         screen("SUBJECT CODE ERR", "USE CODES 01-06");
                     } else if (!omr_storage_load_subject((unsigned)subject, &exam)) {
                         snprintf(key_name, sizeof key_name, "KEY%02u.TXT", (unsigned)subject);
@@ -380,6 +397,8 @@ int main(void)
                     } else if (!omr_front(front, &exam.layout, answers)) {
                         screen("FRONT MARK ERROR", "REALIGN AND TRY");
                     } else {
+                        active_identity = identity;
+                        strcpy(student_id, candidate_id);
                         active_subject = (unsigned)subject;
                         snprintf(key_name, sizeof key_name, "SUBJECT %02u", active_subject);
                         serial(key_name);
@@ -402,7 +421,7 @@ int main(void)
                     if (saved == 1) {
                         char score_line[17];
                         snprintf(score_line, sizeof score_line, "SCORE %u", score);
-                        screen("RESULT SAVED", score_line);
+                        screen(student_id, score_line);
                         Xil_Out32(FND, bcd4(score));
                         tft_view(1);
                         student_id[0] = 0;
@@ -426,14 +445,6 @@ int main(void)
         }
         if (state == ERROR && (video_command >> VIDEO_VIEW_SHIFT) != 4U)
             tft_view(4);
-        /* Refresh the ID prompt after a UART command even if alignment is stable. */
-        if (state == FRONT_IDLE) {
-            static int previous_id_set;
-            if (!!student_id[0] != previous_id_set) {
-                previous_id_set = !!student_id[0];
-                old_ready = -1;
-            }
-        }
     }
 }
 

@@ -12,16 +12,16 @@ vivado -mode batch -source .\OMR_state_change\build_servo.tcl
 - Vivado는 `OMR_state_change.runs/impl_1/system_wrapper.bit`와 `OMR_state_change.sdk/system_wrapper.hdf`를 생성한다.
 - SDK 스크립트는 `OMR_state_change.sdk/OMR_state_change_app/Debug/OMR_state_change_app.elf`를 생성한다. JTAG에서 HDF로 PS 초기화를 수행하고, 해당 비트스트림과 ELF를 같은 세션에서 실행한다.
 - FAT32 SD 카드 루트에 공통 과목코드 위치를 담은 `KEY.TXT`와 과목별 `KEY01.TXT`~`KEY06.TXT` 중 사용할 파일을 넣는다. 예를 들어 코드 `02`는 `KEY02.TXT`를 읽는다.
-- UART 115200, 8N1에서 `TOTAL 30`과 `ID 20221139 HYEONSEO` 같은 명령을 보낸다. 학번은 숫자 1~8자리, 이름은 ASCII 1~32자다.
+- UART 115200, 8N1의 `TOTAL 30`은 전체 응시자 수 설정용이다. 학생은 OMR의 학년·반·번호로 식별한다. 이름도 남기려면 앞면 대기 중 `ID 10203 HYEONSEO`처럼 학년 1자리·반 2자리·번호 2자리와 ASCII 이름을 입력한다. 판독한 학생과 일치할 때만 이름이 기록된다.
 
 ## 조작 순서
 
 [실제 OMR 카드 사진과 판독 영역](../docs/omr-card.md)
 
 1. 검은 막대가 위로 오도록 OMR 앞면을 어두운 무광 배경 위에 놓고, 카드 전체를 TFT 네모 가이드 안에 맞춘다.
-2. 가이드가 초록색이고 `READY - PRESS 1`이 표시되면 1번 버튼(PB0)을 누른다. 앞면의 과목코드 두 자리를 읽고 해당 정답 파일을 연다. 유효한 정답지를 읽고 객관식을 판독하면 서보에 뒷면 위치 명령을 보낸다.
+2. 가이드가 초록색이고 `READY - PRESS 1`이 표시되면 1번 버튼(PB0)을 누른다. 앞면의 학년·반·번호와 과목코드 두 자리를 읽고 해당 정답 파일을 연다. 유효한 정답지를 읽고 객관식을 판독하면 서보에 뒷면 위치 명령을 보낸다.
 3. 안정화 후 뒷면이 다시 가이드 안으로 들어오도록 정렬한다. `READY - PRESS 2`가 표시된 뒤 2번 버튼(PB1)을 눌러 뒷면을 촬영한다. 뒷면 대기 중 4번 버튼(PB3)으로 취소할 수 있다.
-4. IDLE에서 3번 버튼(PB2)은 집계, 4번 버튼(PB3)은 새 회차 시작이다. 완료 기록은 `R0000001/<학번>/FRONT.BMP`, `BACK.BMP`, `RESULT.TXT`에 저장한다. 모호한 판독은 `REVIEW.TXT`에 기록하고 인원 집계에서 제외한다.
+4. IDLE에서 3번 버튼(PB2)은 집계, 4번 버튼(PB3)은 새 회차 시작이다. 예를 들어 1학년 02반 03번은 `R0000001/G1C02N03/`에 `FRONT.BMP`, `BACK.BMP`, `RESULT.TXT`를 저장한다. 같은 회차에서 같은 학년·반·번호의 완료 기록이 있으면 중복 채점을 막는다. 모호한 판독은 `REVIEW.TXT`에 기록하고 인원 집계에서 제외한다.
 
 ## SD 카드 정답지
 

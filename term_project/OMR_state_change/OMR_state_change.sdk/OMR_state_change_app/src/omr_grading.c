@@ -124,6 +124,49 @@ static int choose_mark(int best, int second, int selected)
            (best < 9 || second >= 6 || best - second < 5) ? OMR_REVIEW : selected;
 }
 
+static int metadata_digit(const uint16_t *frame, Point bar, Point direction,
+                          const OmrLayout *layout, int pitch, int first, int last)
+{
+    int best = 0, second = 0, selected = OMR_BLANK;
+    for (int digit = first; digit <= last; ++digit) {
+        const int ink = cell_ink(frame, bar, direction, layout, pitch, digit);
+        if (ink < 0)
+            return OMR_REVIEW;
+        if (ink > best) {
+            second = best;
+            best = ink;
+            selected = digit;
+        } else if (ink > second)
+            second = ink;
+    }
+    return choose_mark(best, second, selected);
+}
+
+int omr_identity(const uint16_t *frame, const OmrLayout *layout, OmrIdentity *identity)
+{
+    Point bars[27];
+    int pitch;
+    if (!timing_row(frame, bars, &pitch))
+        return 0;
+    const Point direction = row_direction(bars);
+    const int grade = metadata_digit(frame, bars[0], direction, layout, pitch, 1, 3);
+    int digits[4];
+    if (grade < 1)
+        return 0;
+    for (int column = 0; column < 4; ++column) {
+        digits[column] = metadata_digit(frame, bars[1 + column], direction, layout, pitch, 0, 9);
+        if (digits[column] < 0)
+            return 0;
+    }
+    const int class_number = 10 * digits[0] + digits[1];
+    const int student_number = 10 * digits[2] + digits[3];
+    if (class_number == 0 || student_number == 0)
+        return 0;
+
+    *identity = (OmrIdentity){(unsigned)grade, (unsigned)class_number, (unsigned)student_number};
+    return 1;
+}
+
 int omr_subject(const uint16_t *frame, const OmrLayout *layout)
 {
     Point bars[27];
@@ -132,21 +175,8 @@ int omr_subject(const uint16_t *frame, const OmrLayout *layout)
         return OMR_REVIEW;
     const Point direction = row_direction(bars);
 
-    /* The last two of the seven metadata columns are subject tens and ones. */
     for (int column = 5; column <= 6; ++column) {
-        int best = 0, second = 0, selected = OMR_BLANK;
-        for (int digit = 0; digit <= 9; ++digit) {
-            const int ink = cell_ink(frame, bars[column], direction, layout, pitch, digit);
-            if (ink < 0)
-                return OMR_REVIEW;
-            if (ink > best) {
-                second = best;
-                best = ink;
-                selected = digit;
-            } else if (ink > second)
-                second = ink;
-        }
-        const int digit = choose_mark(best, second, selected);
+        const int digit = metadata_digit(frame, bars[column], direction, layout, pitch, 0, 9);
         if (digit < 0)
             return digit;
         code = code * 10 + digit;

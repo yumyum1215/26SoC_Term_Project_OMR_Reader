@@ -15,6 +15,11 @@ typedef struct {
     int left, top, right, bottom;
 } OmrBox;
 
+typedef struct {
+    unsigned grade, class_number, student_number;
+} OmrIdentity;
+
+int omr_identity(const uint16_t *frame, const OmrLayout *layout, OmrIdentity *identity);
 int omr_subject(const uint16_t *frame, const OmrLayout *layout);
 int omr_front(const uint16_t *frame, const OmrLayout *layout,
               int answers[OMR_QUESTIONS]);
