@@ -9,7 +9,7 @@ vivado -mode batch -source .\OMR_state_change\build_servo.tcl
 .\OMR_state_change\build_sdk.ps1
 ```
 
-- Vivado는 `OMR_state_change.runs/impl_1/system_wrapper.bit`, `OMR_state_change.sdk/system_wrapper.hdf`, `OMR_state_change.sdk/ps7_init.tcl`을 생성한다. PS DDR 모델과 배선 지연은 RPS-Z7020-TK의 TFT 실습 설정을 사용한다.
+- Vivado는 `OMR_state_change.runs/impl_1/system_wrapper.bit`, `OMR_state_change.sdk/system_wrapper.hdf`, `OMR_state_change.sdk/ps7_init.tcl`을 생성한다. PS DDR 모델과 배선 지연, Bank 1의 1.8V 설정은 RPS-Z7020-TK의 TFT 실습 설정을 사용한다. SD0의 MIO 40–45도 1.8V로 초기화한다.
 - SDK 스크립트는 `OMR_state_change.sdk/OMR_state_change_app/Debug/OMR_state_change_app.elf`를 생성한다. JTAG에서는 같은 Vivado 빌드의 `ps7_init.tcl`로 DDR과 SDIO 클록을 초기화하고, 해당 비트스트림과 ELF를 실행한다.
 - FAT32 SD 카드 루트에 공통 과목코드 위치를 담은 `KEY.TXT`와 과목별 `KEY01.TXT`~`KEY06.TXT` 중 사용할 파일을 넣는다. 예를 들어 코드 `02`는 `KEY02.TXT`를 읽는다.
 - UART 115200, 8N1의 `TOTAL 30`은 전체 응시자 수 설정용이다. 학생은 OMR의 학년·반·번호로 식별한다. 이름도 남기려면 앞면 대기 중 `ID 10203 HYEONSEO`처럼 학년 1자리·반 2자리·번호 2자리와 ASCII 이름을 입력한다. 판독한 학생과 일치할 때만 이름이 기록된다.
