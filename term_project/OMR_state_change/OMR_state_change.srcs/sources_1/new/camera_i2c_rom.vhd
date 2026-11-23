@@ -146,7 +146,7 @@ begin
                 when    x"6C"   =>  i2c_rom_data        <=  x"78430061";    -- FORMAT CONTROL RG : RGB(r[4:0],g[5:3],g[2:0],b[4:0])
 
                 when    x"6D"   =>  i2c_rom_data        <=  x"78382002";    -- TIMING TC REG20 : Sensor vflip
-                when    x"6E"   =>  i2c_rom_data        <=  x"78382102";    -- TIMING TC REG21 : Sensor mirror
+                when    x"6E"   =>  i2c_rom_data        <=  x"78382100";    -- TIMING TC REG21 : Sensor and ISP mirror disabled
 
                 -- test pattern
 --                when    x"6F"   =>  i2c_rom_data        <=   x"78503D" & '0' & "000" & x"0";    -- normal
