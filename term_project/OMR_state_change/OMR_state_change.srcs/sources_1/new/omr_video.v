@@ -58,7 +58,9 @@ module omr_video (
                        camera_data[4:0] >= 5'd19;
     localparam [8:0] GUIDE_TOP = 9'd32;
     localparam [8:0] GUIDE_BOTTOM = 9'd239;
-    wire aligned = outside_light < 10'd160 && broad_rows >= 9'd120;
+    // Permit small edge offsets and isolated highlights near the card.
+    localparam [8:0] GUIDE_MARGIN = 9'd4;
+    wire aligned = outside_light < 10'd600 && broad_rows >= 9'd110;
     (* ram_style = "block" *) reg [15:0] frame [0:VIDEO_PIXELS-1];
 
     always @(posedge camera_PCLK) begin
@@ -106,7 +108,8 @@ module omr_video (
                 else if (write_addr < VIDEO_PIXELS) begin
                     write_addr <= write_addr + 1'b1;
                     if (light_pixel) begin
-                        if (column < 24 || column > 455 || row < GUIDE_TOP || row > GUIDE_BOTTOM) begin
+                        if (column < 24 - GUIDE_MARGIN || column > 455 + GUIDE_MARGIN ||
+                            row < GUIDE_TOP - GUIDE_MARGIN || row > GUIDE_BOTTOM + GUIDE_MARGIN) begin
                             if (outside_light != 10'd1023)
                                 outside_light <= outside_light + 1'b1;
                         end else begin
