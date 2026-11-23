@@ -1,32 +1,35 @@
-# OMR state change and MG90S bring-up
+# RPS-Z7020-TK 양면 OMR
 
-Open `OMR_state_change/OMR_state_change.xpr` with Vivado 2019.1, or
-run the batch build from any writable directory:
+Vivado 2019.1과 Xilinx SDK 2019.1로 빌드한다. 카메라는 실습용 OV5640 모듈을 CAMERA1 커넥터에 연결한다. 카메라 초기화용 VHDL은 실습 자료 `Education.zip`의 `1_End/ch13_pl_cis`에서 가져왔다.
+
+## 빌드와 준비
 
 ```powershell
-vivado -mode batch -source <path-to-OMR_state_change>/build_servo.tcl
+vivado -mode batch -source .\OMR_state_change\build_servo.tcl
+.\OMR_state_change\build_sdk.ps1
 ```
 
-The build creates `OMR_state_change.runs/impl_1/system_wrapper.bit` and
-`OMR_state_change.sdk/system_wrapper.hdf` under the Vivado project.
+- Vivado는 `OMR_state_change.runs/impl_1/system_wrapper.bit`와 `OMR_state_change.sdk/system_wrapper.hdf`를 생성한다.
+- SDK 스크립트는 `OMR_state_change.sdk/OMR_state_change_app/Debug/OMR_state_change_app.elf`를 생성한다. JTAG에서 HDF로 PS 초기화를 수행하고, 해당 비트스트림과 ELF를 같은 세션에서 실행한다.
+- FAT32 SD 카드 루트에 `KEY.example.txt`를 `KEY.TXT`로 복사하고 정답·배점·뒷면 위치를 시험지에 맞게 수정한다.
+- UART 115200, 8N1에서 `TOTAL 30`과 `ID 20221139 HYEONSEO` 같은 명령을 보낸다. 학번은 숫자 1~8자리, 이름은 ASCII 1~32자다.
 
-In Xilinx SDK 2019.1, import the HDF as a hardware platform, create an
-empty standalone application for `ps7_cortexa9_0` with a fresh BSP, and
-add `OMR_state_change.sdk/OMR_state_change_app/src/main.c`. Build the app
-and run it on the board with the matching bitstream over JTAG.
+## 조작 순서
 
-| Button | PWM command |
+1. 검은 막대가 위로 오도록 OMR 앞면을 어두운 무광 배경 위에 놓고, 카드 전체를 TFT 네모 가이드 안에 맞춘다.
+2. 가이드가 초록색이고 `READY - PRESS 1`이 표시되면 1번 버튼(PB0)을 누른다. 앞면을 복사하고 서보에 뒷면 위치 명령을 보낸다.
+3. 안정화 후 뒷면이 다시 가이드 안으로 들어오도록 정렬한다. `READY`가 다시 표시된 뒤 1번 버튼을 한 번 더 눌러 뒷면을 촬영한다. 뒷면 대기 중 4번 버튼으로 취소할 수 있다.
+4. IDLE의 2번 버튼은 집계, 3번 버튼은 새 회차 시작이다. 완료 기록은 `R0000001/<학번>/FRONT.BMP`, `BACK.BMP`, `RESULT.TXT`에 저장한다. 모호한 판독은 `REVIEW.TXT`에 기록하고 인원 집계에서 제외한다.
+
+## KEY.TXT
+
+| 줄 | 값 |
 | --- | --- |
-| PB0 | 1500 us center |
-| PB1 | 1400 us |
-| PB2 | 1600 us |
-| PB3 | Disable pulses |
+| 1 | 앞면 첫 행 오프셋과 행 간격. 검은 막대 피치의 천분율 |
+| 2, 3 | 뒷면 두 답란의 `left top right bottom`. 480×272 좌표로, 답란 테두리를 피한 내부 좌표. right와 bottom은 제외 |
+| 4 | 객관식 10개와 주관식 2개의 정답 |
+| 5 | 같은 순서의 배점 12개 |
 
-AXI GPIO at 0x41210000 accepts pulse width in microseconds. Values from
-1000 to 2000 are applied at the next 20 ms frame boundary. All other
-values, including the reset default of 0, disable the output.
+앞면 기본값은 제공된 카드 사진에서 구했다. 객관식은 사진의 상단 검은 막대 27개 중 8~12번째에 해당하는 1~10번 구역을 읽는다. 뒷면 예시 좌표는 실제 양식에 맞게 조정해야 한다. 주관식은 ARM에서 정수 CNN을 실행한다. 모델 학습 코드는 `OMR_state_change/train_digits.py`에 있으며 [UCI Optdigits](https://doi.org/10.24432/C50P49) 학습·시험 데이터를 사용한다.
 
-PWM is routed to J14 pin 14 (FPGA P20, GPIO6). Connect external 5 V to the
-servo and share ground with J14 pin 13. Confirm the servo accepts the
-board's 3.3 V PWM or use a 5 V AHCT buffer. Test with the flip mechanism
-disconnected before calibrating the two positions.
+서보는 J14 14번(GPIO6, P20)에 PWM을 출력한다. J14 13번과 서보 전원 GND를 공유한다. 앞면 1400 µs, 뒷면 1600 µs, 안정화 800 ms는 시험용 초기값이다. 서보를 연결하지 않고 손으로 뒤집어 나머지 흐름을 검증할 수 있다.
