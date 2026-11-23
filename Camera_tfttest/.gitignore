@@ -1,0 +1,6 @@
+/.Xil/
+/build*/
+/*.bit
+/*.log
+/*.jou
+/*.str
