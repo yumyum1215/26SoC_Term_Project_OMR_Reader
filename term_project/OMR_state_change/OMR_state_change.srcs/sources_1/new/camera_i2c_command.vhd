@@ -12,8 +12,9 @@ port(
     i2c_command_data                                :   in      std_logic_vector(31 downto 0);
     i2c_command_end                                 :   out     std_logic;
 
-    i2c_scl                                         :   inout   std_logic;
-    i2c_sda                                         :   inout   std_logic
+    i2c_nack                                        :   out     std_logic;
+    scl_in, sda_in                                  :   in      std_logic;
+    scl_release, sda_release                        :   out     std_logic
 );
 end entity;
 
@@ -31,6 +32,8 @@ architecture ar_camera_i2c_command of camera_i2c_command is
 
     signal  sig_i2c_command_end                     :           std_logic := '0';
 
+    signal sig_i2c_nack : std_logic := '0';
+
 begin
 
 process(clk)
@@ -42,6 +45,7 @@ begin
                 sig_i2c_sda <= '1';
 
                 if(i2c_command_enable = '1')then
+                    sig_i2c_nack <= '0';
                     sig_i2c_command_data <= i2c_command_data;
 
                     if(SW_1 = '1')then
@@ -170,15 +174,18 @@ begin
 
                     when    x"1B"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"1C"  =>
                                         sig_i2c_scl <= '1';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"1D"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
+                                        if to_x01(scl_in) /= '1' or to_x01(sda_in) /= '0' then
+                                            sig_i2c_nack <= '1';
+                                        end if;
 
                     when    x"1E"  =>
                                         sig_i2c_scl <= '0';
@@ -278,15 +285,18 @@ begin
 
                     when    x"36"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"37"  =>
                                         sig_i2c_scl <= '1';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"38"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
+                                        if to_x01(scl_in) /= '1' or to_x01(sda_in) /= '0' then
+                                            sig_i2c_nack <= '1';
+                                        end if;
 
                     when    x"39"  =>
                                         sig_i2c_scl <= '0';
@@ -386,15 +396,18 @@ begin
 
                     when    x"51"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"52"  =>
                                         sig_i2c_scl <= '1';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"53"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
+                                        if to_x01(scl_in) /= '1' or to_x01(sda_in) /= '0' then
+                                            sig_i2c_nack <= '1';
+                                        end if;
 
                     when    x"54"  =>
                                         sig_i2c_scl <= '0';
@@ -494,15 +507,18 @@ begin
 
                     when    x"6C"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"6D"  =>
                                         sig_i2c_scl <= '1';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"6E"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
+                                        if to_x01(scl_in) /= '1' or to_x01(sda_in) /= '0' then
+                                            sig_i2c_nack <= '1';
+                                        end if;
 
                     when    x"6F"  =>
                                         sig_i2c_scl <= '0';
@@ -642,15 +658,18 @@ begin
 
                     when    x"1B"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"1C"  =>
                                         sig_i2c_scl <= '1';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"1D"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
+                                        if to_x01(scl_in) /= '1' or to_x01(sda_in) /= '0' then
+                                            sig_i2c_nack <= '1';
+                                        end if;
 
                     when    x"1E"  =>
                                         sig_i2c_scl <= '0';
@@ -750,15 +769,18 @@ begin
 
                     when    x"36"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"37"  =>
                                         sig_i2c_scl <= '1';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"38"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
+                                        if to_x01(scl_in) /= '1' or to_x01(sda_in) /= '0' then
+                                            sig_i2c_nack <= '1';
+                                        end if;
 
                     when    x"39"  =>
                                         sig_i2c_scl <= '0';
@@ -858,15 +880,18 @@ begin
 
                     when    x"51"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"52"  =>
                                         sig_i2c_scl <= '1';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
 
                     when    x"53"  =>
                                         sig_i2c_scl <= '0';
-                                        sig_i2c_sda <= 'Z';
+                                        sig_i2c_sda <= '1';
+                                        if to_x01(scl_in) /= '1' or to_x01(sda_in) /= '0' then
+                                            sig_i2c_nack <= '1';
+                                        end if;
 
                     when    x"54"  =>
                                         sig_i2c_scl <= '0';
@@ -893,7 +918,9 @@ end process;
 
 i2c_command_end <= sig_i2c_command_end;
 
-i2c_scl <= sig_i2c_scl;
-i2c_sda <= sig_i2c_sda;
+-- Open-drain controls: '1' releases the pad.
+scl_release <= '0' when sig_i2c_scl = '0' else '1';
+sda_release <= '0' when sig_i2c_sda = '0' else '1';
+i2c_nack <= sig_i2c_nack;
 
 end architecture;

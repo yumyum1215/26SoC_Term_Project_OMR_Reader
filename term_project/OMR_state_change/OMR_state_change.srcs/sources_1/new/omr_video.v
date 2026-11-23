@@ -23,9 +23,16 @@ module omr_video (
             i2c_div <= i2c_div + 1'b1;
     end
 
+    wire scl_in, sda_in, scl_release, sda_release;
+    wire camera_initialized, camera_init_nack;
+    IOBUF camera_scl_pad (.I(1'b0), .T(scl_release), .IO(camera_SCL), .O(scl_in));
+    IOBUF camera_sda_pad (.I(1'b0), .T(sda_release), .IO(camera_SDA), .O(sda_in));
+
     camera_i2c init_camera (
         .clk(i2c_clk), .SW_1(1'b1), .camera_RESETn(camera_RESETn),
-        .camera_PWDN(camera_PWDN), .camera_scl(camera_SCL), .camera_sda(camera_SDA)
+        .camera_PWDN(camera_PWDN), .scl_in(scl_in), .sda_in(sda_in),
+        .scl_release(scl_release), .sda_release(sda_release),
+        .init_done(camera_initialized), .init_nack(camera_init_nack)
     );
 
     (* ASYNC_REG = "TRUE" *) reg [1:0] camera_reset = 0;
@@ -34,6 +41,7 @@ module omr_video (
     (* ASYNC_REG = "TRUE" *) reg [1:0] valid_sync = 0;
     (* ASYNC_REG = "TRUE" *) reg [1:0] align_required = 0;
     (* ASYNC_REG = "TRUE" *) reg [1:0] aligned_sync = 0;
+    (* ASYNC_REG = "TRUE" *) reg [1:0] init_nack_sync = 0;
     reg frozen = 0, frame_valid = 0, frame_aligned = 0;
     reg [9:0] outside_light = 0;
     reg [6:0] left_paper = 0, right_paper = 0;
@@ -52,7 +60,7 @@ module omr_video (
     (* ram_style = "block" *) reg [15:0] frame [0:VIDEO_PIXELS-1];
 
     always @(posedge camera_PCLK) begin
-        camera_reset <= {camera_reset[0], resetn};
+        camera_reset <= {camera_reset[0], resetn && camera_initialized};
         freeze_sync <= {freeze_sync[0], command[31]};
         align_required <= {align_required[0], command[29]};
         if (!camera_reset[1]) begin
@@ -170,6 +178,7 @@ module omr_video (
         frozen_sync <= {frozen_sync[0], frozen};
         valid_sync <= {valid_sync[0], frame_valid};
         aligned_sync <= {aligned_sync[0], frame_aligned};
+        init_nack_sync <= {init_nack_sync[0], camera_init_nack};
         if (!resetn) begin
             phase <= 0;
             x <= 0;
@@ -208,7 +217,7 @@ module omr_video (
     assign TFTLCD_TCLK = phase == 3 || phase == 4;
     assign TFTLCD_DE_out = 1'b1;
     assign TFTLCD_Tpower = 1'b1;
-    assign status = {12'd0, aligned_sync[1], read_ack, valid_sync[1], frozen_sync[1], cpu_pixel};
+    assign status = {11'd0, init_nack_sync[1], aligned_sync[1], read_ack, valid_sync[1], frozen_sync[1], cpu_pixel};
 endmodule
 
 

@@ -23,6 +23,7 @@
 #define CMD_READ (1U << 30)
 #define CMD_REQUIRE_ALIGNED (1U << 29)
 #define VIDEO_VIEW_SHIFT 24U
+#define STAT_CAMERA_NACK (1U << 20)
 #define STAT_ALIGNED (1U << 19)
 #define STAT_READ (1U << 18)
 #define STAT_CAMERA (1U << 17)
@@ -310,17 +311,22 @@ int main(void)
     State state = FRONT_IDLE;
     XTime until = after_ms(SETTLE_MS);
     int old_ready = -1;
+    int old_camera_failed = -1;
     for (;;) {
         uart_input(state == FRONT_IDLE);
         const u32 events = take_buttons();
-        const int aligned = (video_status() & (STAT_CAMERA | STAT_ALIGNED)) ==
+        const u32 status = video_status();
+        const int camera_failed = (status & (STAT_CAMERA_NACK | STAT_CAMERA)) == STAT_CAMERA_NACK;
+        const int aligned = (status & (STAT_CAMERA | STAT_ALIGNED)) ==
                              (STAT_CAMERA | STAT_ALIGNED);
 
         if (state == FRONT_IDLE || state == BACK_ALIGN) {
             const int ready = aligned && passed(until);
             const u32 capture_button = state == FRONT_IDLE ? BUTTON_FRONT : BUTTON_BACK;
-            if (ready != old_ready) {
-                if (state == BACK_ALIGN)
+            if (ready != old_ready || camera_failed != old_camera_failed) {
+                if (camera_failed)
+                    screen("CAMERA NO FRAME", "CHECK CAMERA1");
+                else if (state == BACK_ALIGN)
                     screen("BACK SIDE", ready ? "READY - PRESS 2" : "ALIGN IN BOX");
                 else if (!sd_ready)
                     screen("SD / KEY ERROR", "CHECK KEY.TXT");
@@ -329,6 +335,7 @@ int main(void)
                 else
                     screen("FRONT SIDE", ready ? "READY - PRESS 1" : "ALIGN IN BOX");
                 old_ready = ready;
+                old_camera_failed = camera_failed;
             }
 
             if (state == FRONT_IDLE && (events & BUTTON_SUMMARY)) {
