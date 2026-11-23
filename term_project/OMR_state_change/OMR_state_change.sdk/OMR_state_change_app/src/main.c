@@ -38,9 +38,10 @@
 #define FRONT_PULSE_US 544U
 #define BACK_PULSE_US 2400U
 #define SETTLE_MS 800U
-#define SCORE_DISPLAY_MS 3500U
+#define CAPTURE_DISPLAY_MS 5000U
+#define RESULT_DISPLAY_MS 5000U
 
-typedef enum { FRONT_IDLE, FRONT_RESULT, BACK_ALIGN, RESULT, SUMMARY, CLEARED, ERROR } State;
+typedef enum { FRONT_IDLE, FRONT_CAPTURED, FRONT_RESULT, BACK_ALIGN, BACK_CAPTURED, RESULT, SUMMARY, CLEARED, ERROR } State;
 
 static uint16_t front[OMR_WIDTH * OMR_HEIGHT], back[OMR_WIDTH * OMR_HEIGHT];
 static int answers[12];
@@ -183,8 +184,11 @@ static int capture_aligned(uint16_t *destination)
         if (ok)
             destination[pixels - 1U - address] = (uint16_t)video_status();
     }
-    video_write(video_command & CMD_READ);
-    return wait_video(STAT_HELD, 0, 450) && ok;
+    if (!ok) {
+        video_write(video_command & CMD_READ);
+        (void)wait_video(STAT_HELD, 0, 450);
+    }
+    return ok;
 }
 
 static void gpio_interrupt(void *unused)
@@ -410,7 +414,7 @@ int main(void)
                     screen("SUMMARY FAILED", "CHECK SD DATA");
                     state = ERROR;
                 }
-                until = after_ms(GRAPH_DISPLAY_MS);
+                until = after_ms(state == ERROR ? RESULT_DISPLAY_MS : GRAPH_DISPLAY_MS);
             } else if (state == FRONT_IDLE && (events & BUTTON_CLEAR_CANCEL)) {
                 if (sd_ready && omr_storage_clear()) {
                     totals = (OmrSummary){0, 0};
@@ -422,67 +426,78 @@ int main(void)
                     screen("CLEAR FAILED", "CHECK SD CARD");
                     state = ERROR;
                 }
-                until = after_ms(2200);
+                until = after_ms(state == ERROR ? RESULT_DISPLAY_MS : 2200U);
             } else if (state == BACK_ALIGN && (events & BUTTON_CLEAR_CANCEL)) {
                 screen("CANCELLED", "RETURNING FRONT");
                 state = ERROR;
                 until = after_ms(1500);
             } else if ((events & capture_button) && ready && sd_ready) {
-                if (state == FRONT_IDLE && capture_aligned(front)) {
-                    const int subject = omr_subject(front, &subject_layout);
-                    char key_name[17], candidate_id[9] = "";
-                    OmrIdentity identity;
-                    if (omr_identity(front, &subject_layout, &identity))
-                        card_student_id(&identity, candidate_id);
-                    if (!candidate_id[0]) {
-                        screen("STUDENT ID ERROR", "CHECK CARD MARKS");
-
-                    } else if (!omr_subject_supported(subject)) {
-                        screen("SUBJECT CODE ERR", "USE 01-06 OR 10");
-                    } else if (!omr_storage_load_subject((unsigned)subject, &exam)) {
-                        snprintf(key_name, sizeof key_name, "KEY%02u.TXT", (unsigned)subject);
-                        screen("CHECK ANSWER KEY", key_name);
-                    } else if (!omr_front(front, &exam.layout, answers)) {
-                        screen("FRONT MARK ERROR", "REALIGN AND TRY");
-                    } else {
-                        active_identity = identity;
-                        strcpy(student_id, candidate_id);
-                        active_subject = (unsigned)subject;
-                        snprintf(key_name, sizeof key_name, "SUBJECT %02u", active_subject);
-                        serial(key_name);
-                        serial(" ");
-                        serial(active_subject == OMR_TEST_SUBJECT ? "TEST" :
-                               subject_names[active_subject - OMR_FIRST_SUBJECT]);
-                        serial("\r\n");
-                        unsigned score = 0;
-                        for (unsigned i = 0; i < OMR_QUESTIONS; ++i) {
-                            if (answers[i] == exam.key[i])
-                                score += exam.points[i];
-                        }
-                        show_score(student_id, score);
-                        state = FRONT_RESULT;
-                        until = after_ms(SCORE_DISPLAY_MS);
-                    }
-                    if (state == FRONT_IDLE) {
-                        state = ERROR;
-                        until = after_ms(2200);
-                    }
-                } else if (state == BACK_ALIGN && capture_aligned(back)) {
-                    omr_back(back, exam.back_boxes, answers + 10);
-                    unsigned score;
-                    const int saved = save_score(&score);
-                    if (saved == 1) {
-                        show_score(student_id, score);
-                    } else {
-                        screen(saved < 0 ? "REVIEW ANSWERS" : "SAVE FAILED",
-                               saved < 0 ? "CHECK MARKS" : "CHECK SD CARD");
-                        tft_view(4);
-                    }
-                    Xil_Out32(SERVO, FRONT_PULSE_US);
-                    state = RESULT;
-                    until = after_ms(SCORE_DISPLAY_MS);
+                const int front_side = state == FRONT_IDLE;
+                if (capture_aligned(front_side ? front : back)) {
+                    screen(front_side ? "FRONT CAPTURED" : "BACK CAPTURED", "PHOTO PREVIEW");
+                    state = front_side ? FRONT_CAPTURED : BACK_CAPTURED;
+                    until = after_ms(CAPTURE_DISPLAY_MS);
                 }
                 (void)take_buttons();
+            }
+        } else if (state == FRONT_CAPTURED || state == BACK_CAPTURED) {
+            if (!passed(until))
+                continue;
+
+            video_write(video_command & CMD_READ);
+            if (state == FRONT_CAPTURED) {
+                const int subject = omr_subject(front, &subject_layout);
+                char key_name[17], candidate_id[9] = "";
+                OmrIdentity identity;
+                if (omr_identity(front, &subject_layout, &identity))
+                    card_student_id(&identity, candidate_id);
+                if (!candidate_id[0]) {
+                    screen("STUDENT ID ERROR", "CHECK CARD MARKS");
+    
+                } else if (!omr_subject_supported(subject)) {
+                    screen("SUBJECT CODE ERR", "USE 01-06 OR 10");
+                } else if (!omr_storage_load_subject((unsigned)subject, &exam)) {
+                    snprintf(key_name, sizeof key_name, "KEY%02u.TXT", (unsigned)subject);
+                    screen("CHECK ANSWER KEY", key_name);
+                } else if (!omr_front(front, &exam.layout, answers)) {
+                    screen("FRONT MARK ERROR", "REALIGN AND TRY");
+                } else {
+                    active_identity = identity;
+                    strcpy(student_id, candidate_id);
+                    active_subject = (unsigned)subject;
+                    snprintf(key_name, sizeof key_name, "SUBJECT %02u", active_subject);
+                    serial(key_name);
+                    serial(" ");
+                    serial(active_subject == OMR_TEST_SUBJECT ? "TEST" :
+                           subject_names[active_subject - OMR_FIRST_SUBJECT]);
+                    serial("\r\n");
+                    unsigned score = 0;
+                    for (unsigned i = 0; i < OMR_QUESTIONS; ++i) {
+                        if (answers[i] == exam.key[i])
+                            score += exam.points[i];
+                    }
+                    show_score(student_id, score);
+                    state = FRONT_RESULT;
+                    until = after_ms(RESULT_DISPLAY_MS);
+                }
+                if (state == FRONT_CAPTURED) {
+                    state = ERROR;
+                    until = after_ms(RESULT_DISPLAY_MS);
+                }
+            } else {
+                omr_back(back, exam.back_boxes, answers + 10);
+                unsigned score;
+                const int saved = save_score(&score);
+                if (saved == 1) {
+                    show_score(student_id, score);
+                } else {
+                    screen(saved < 0 ? "REVIEW ANSWERS" : "SAVE FAILED",
+                           saved < 0 ? "CHECK MARKS" : "CHECK SD CARD");
+                    tft_view(4);
+                }
+                Xil_Out32(SERVO, FRONT_PULSE_US);
+                state = RESULT;
+                until = after_ms(RESULT_DISPLAY_MS);
             }
         } else if (state == FRONT_RESULT) {
             if (events & BUTTON_CLEAR_CANCEL) {

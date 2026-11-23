@@ -74,8 +74,8 @@ OV5640 초기화 ROM은 마지막에 `0x3821 = 0x00`을 써서 센서와 ISP의 
 | 입력 | 동작 | 표시 |
 |---|---|---|
 | **IDLE** | 검은 막대가 위로 오게 카드를 놓고 앞면 전체를 네모 가이드 안에 맞춘다. | TFT 가이드가 빨강에서 초록으로 바뀌고 Text LCD에 `READY - PRESS 1`. |
-| **버튼 1 · PB0** | 앞면 `READY`에서 객관식 촬영·DDR 복사를 시작한다. 객관식 점수 표시가 끝나면 뒤집는다. | 약 3.5초간 TFT·7세그먼트에 객관식 점수, Text LCD에 학생 ID와 `SCORE n`. 이후 뒷면 정렬 화면으로 전환한다. |
-| **버튼 2 · PB1** | 뒤집기 안정화 후 뒷면 `READY`에서 주관식 촬영을 시작한다. | Text LCD에 `READY - PRESS 2`. 앞면 ID로 채점·저장한 뒤 점수를 표시하면서 앞면으로 회전한다. 약 3.5초 뒤 IDLE로 자동 복귀한다. |
+| **버튼 1 · PB0** | 앞면 `READY`에서 객관식 촬영·DDR 복사 후 동결된 사진을 TFT에 5초간 표시한다. 객관식 점수 표시가 끝나면 뒤집는다. | 약 5초간 TFT·7세그먼트에 객관식 점수, Text LCD에 학생 ID와 `SCORE n`. 이후 뒷면 정렬 화면으로 전환한다. |
+| **버튼 2 · PB1** | 뒤집기 안정화 후 뒷면 `READY`에서 주관식을 촬영하고 동결된 사진을 TFT에 5초간 표시한다. | Text LCD에 `READY - PRESS 2`. 앞면 ID로 채점·저장한 뒤 점수를 표시하면서 앞면으로 회전한다. 약 5초 뒤 IDLE로 자동 복귀한다. |
 | **버튼 3 · PB2** | SD 카드 `DATA`의 완료 기록을 다시 읽어 전체 집계. | TFT에서 학년·반·번호 순으로 학생당 약 2초씩 과목별 막대와 점수, Text LCD에 학생 ID와 집계 인원, 7-segment에 전체 응시자 수 4자리와 집계 인원 수 4자리. 표시 시간이 지나면 IDLE. |
 | **버튼 4 · PB3** | IDLE에서 `DATA`의 OMR 학생 기록을 삭제하고, 뒷면 정렬 중에는 진행 중인 채점을 취소한다. | TFT에 초기화 완료, Text LCD와 7-segment에 초기 상태. 표시 시간이 지나면 IDLE. |
 
@@ -99,16 +99,16 @@ stateDiagram-v2
     state "오류·재확인·취소 표시" as Error
 
     Idle --> Front: PB0 및 READY
-    Front --> Key: 앞면 복사 완료
+    Front --> Key: 촬영 사진 5초 표시 후
     Key --> FrontScore: 정답지 로드 및 객관식 판독 완료
-    FrontScore --> Flip: 약 3.5초 후
+    FrontScore --> Flip: 약 5초 후
     Key --> Error: 과목코드 또는 정답 파일 오류
     Flip --> BackAlign: 회전 안정화 후
     BackAlign --> Back: PB1 및 뒷면 READY
     BackAlign --> Error: PB3 취소
-    Back --> Grade: 뒷면 복사 완료
+    Back --> Grade: 촬영 사진 5초 표시 후
     Grade --> Result: 저장 후 앞면으로 회전 시작
-    Result --> Idle: 약 3.5초 후 자동 복귀
+    Result --> Idle: 약 5초 후 자동 복귀
     Home --> Idle: 복귀와 안정화 대기 완료
     Idle --> Summary: PB2
     Summary --> Summary: 약 2초 후 다음 학생
