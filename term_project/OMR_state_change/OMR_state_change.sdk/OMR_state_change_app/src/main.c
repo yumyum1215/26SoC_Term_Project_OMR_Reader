@@ -374,7 +374,7 @@ int main(void)
                 else if (!sd_ready)
                     screen("SD / KEY ERROR", "CHECK KEY.TXT");
                 else
-                    screen("FRONT SIDE", ready ? "READY - PRESS 1" : "ALIGN IN BOX");
+                    screen("FRONT SIDE", ready ? "OK" : "ALIGN IN BOX");
                 old_ready = ready;
                 old_camera_failed = camera_failed;
             }
@@ -487,5 +487,3 @@ int main(void)
             tft_view(4);
     }
 }
-
-
