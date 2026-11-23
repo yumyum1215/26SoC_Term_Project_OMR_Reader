@@ -7,13 +7,14 @@ RPS-Z7020-TK와 OV5640 카메라로 **앞면 객관식 10문항**, **뒷면 숫�
 ```mermaid
 flowchart LR
     A["앞면을 TFT 가이드에 맞춤<br/>READY - PRESS 1"]
-    B["1번 버튼 · PB0<br/>객관식 촬영·점수 표시"]
+    B["1번 버튼 · PB0<br/>객관식 촬영·점수 표시<br/>약 3.5초"]
     K["과목코드 판독<br/>SD에서 KEYnn.TXT 선택"]
     C["뒤집기 명령<br/>안정화 대기"]
     D["뒷면을 가이드에 다시 맞춤<br/>READY - PRESS 2"]
     E["2번 버튼 · PB1<br/>주관식 촬영"]
     F["양면 채점<br/>사진과 결과를 SD에 저장"]
-    A --> B --> K --> C --> D --> E --> F
+    G["앞면으로 회전<br/>결과 표시 후 IDLE"]
+    A --> B --> K --> C --> D --> E --> F --> G
     classDef ready fill:#dff6e7,stroke:#3b8557,color:#163926
     classDef capture fill:#e6efff,stroke:#4b6fa8,color:#1c3458
     class A,D ready
@@ -23,7 +24,7 @@ flowchart LR
 | 버튼 | 동작 |
 | --- | --- |
 | **1번 · PB0** | 앞면 `READY`에서 객관식 촬영 후 점수 표시, 이후 뒷면 정렬 |
-| **2번 · PB1** | 뒷면 `READY`에서 주관식 촬영 후 양면 채점 |
+| **2번 · PB1** | 뒷면 `READY`에서 주관식 촬영 후 양면 채점·자동 복귀 |
 | **3번 · PB2** | IDLE에서 SD 카드 기록을 읽고 학생별 과목 점수를 약 2초씩 표시 |
 | **4번 · PB3** | IDLE에서 `DATA` 안의 OMR 학생 기록 삭제. 뒷면 대기 중에는 현재 채점 취소 |
 

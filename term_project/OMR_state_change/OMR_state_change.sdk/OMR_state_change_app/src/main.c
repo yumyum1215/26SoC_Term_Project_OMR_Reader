@@ -38,6 +38,7 @@
 #define FRONT_PULSE_US 544U
 #define BACK_PULSE_US 2400U
 #define SETTLE_MS 800U
+#define SCORE_DISPLAY_MS 3500U
 
 typedef enum { FRONT_IDLE, FRONT_RESULT, BACK_ALIGN, RESULT, SUMMARY, CLEARED, ERROR } State;
 
@@ -459,28 +460,27 @@ int main(void)
                                 score += exam.points[i];
                         }
                         show_score(student_id, score);
-                        Xil_Out32(SERVO, BACK_PULSE_US);
                         state = FRONT_RESULT;
-                        until = after_ms(2600);
+                        until = after_ms(SCORE_DISPLAY_MS);
                     }
                     if (state == FRONT_IDLE) {
                         state = ERROR;
                         until = after_ms(2200);
                     }
                 } else if (state == BACK_ALIGN && capture_aligned(back)) {
-                    unsigned score;
                     omr_back(back, exam.back_boxes, answers + 10);
+                    unsigned score;
                     const int saved = save_score(&score);
                     if (saved == 1) {
                         show_score(student_id, score);
-                        student_id[0] = 0;
-                        state = RESULT;
                     } else {
                         screen(saved < 0 ? "REVIEW ANSWERS" : "SAVE FAILED",
                                saved < 0 ? "CHECK MARKS" : "CHECK SD CARD");
-                        state = ERROR;
+                        tft_view(4);
                     }
-                    until = after_ms(2600);
+                    Xil_Out32(SERVO, FRONT_PULSE_US);
+                    state = RESULT;
+                    until = after_ms(SCORE_DISPLAY_MS);
                 }
                 (void)take_buttons();
             }
@@ -491,8 +491,18 @@ int main(void)
                 until = after_ms(1500);
             } else if (passed(until)) {
                 tft_view(0);
+                Xil_Out32(SERVO, BACK_PULSE_US);
+                until = after_ms(SETTLE_MS);
                 state = BACK_ALIGN;
                 old_ready = -1;
+            }
+        } else if (state == RESULT) {
+            if (passed(until)) {
+                student_id[0] = 0;
+                tft_view(0);
+                state = FRONT_IDLE;
+                old_ready = -1;
+                summary_digits();
             }
         } else if (state == SUMMARY && graph.student != 0 && passed(until) &&
                    omr_storage_next_graph(graph.student, &graph)) {
