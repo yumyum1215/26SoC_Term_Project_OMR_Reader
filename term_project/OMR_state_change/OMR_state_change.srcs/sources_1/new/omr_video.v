@@ -56,6 +56,8 @@ module omr_video (
     wire light_pixel = high_byte[7:3] >= 5'd17 &&
                        {high_byte[2:0], camera_data[7:5]} >= 6'd38 &&
                        camera_data[4:0] >= 5'd19;
+    localparam [8:0] GUIDE_TOP = 9'd32;
+    localparam [8:0] GUIDE_BOTTOM = 9'd239;
     wire aligned = outside_light < 10'd160 && broad_rows >= 9'd120;
     (* ram_style = "block" *) reg [15:0] frame [0:VIDEO_PIXELS-1];
 
@@ -104,7 +106,7 @@ module omr_video (
                 else if (write_addr < VIDEO_PIXELS) begin
                     write_addr <= write_addr + 1'b1;
                     if (light_pixel) begin
-                        if (column < 24 || column > 455 || row < 16 || row > 255) begin
+                        if (column < 24 || column > 455 || row < GUIDE_TOP || row > GUIDE_BOTTOM) begin
                             if (outside_light != 10'd1023)
                                 outside_light <= outside_light + 1'b1;
                         end else begin
@@ -133,8 +135,10 @@ module omr_video (
     reg [8:0] y = 0;
     reg [16:0] display_addr = 0;
     wire active = x >= 42 && x < 522 && y >= 12 && y < 284;
-    wire guide = ((x == 66 || x == 497) && y >= 28 && y <= 267) ||
-                 ((y == 28 || y == 267) && x >= 66 && x <= 497);
+    wire [8:0] guide_top = GUIDE_TOP + 9'd12;
+    wire [8:0] guide_bottom = GUIDE_BOTTOM + 9'd12;
+    wire guide = ((x == 66 || x == 497) && y >= guide_top && y <= guide_bottom) ||
+                 ((y == guide_top || y == guide_bottom) && x >= 66 && x <= 497);
     wire [16:0] read_addr = phase == 0 ? display_addr : command[16:0];
     wire result_view = command[26:24] != 0;
     wire [2:0] glyph = (x - 10'd74) / 10'd48;
