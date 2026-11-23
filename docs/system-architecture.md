@@ -41,22 +41,22 @@ flowchart LR
     CAMERA --> CAP
     CAP --> FRAME
     CAP --> ROI
-    FRAME --> VIEW --> TFT
-    FRAME --> AXI
-    ROI --> AXI
-    PB --> IRQ -->|"버튼 이벤트"| FSM
-    IRQ --> AXI
-    FSM <-->|"명령·상태·결과"| AXI
+    ROI -->|"정렬 확인 후 동결"| FRAME
+    ROI -->|"가이드 색상"| VIEW
+    FRAME -->|"화면용 픽셀"| VIEW --> TFT
+    FRAME -->|"동결 프레임 읽기"| AXI
+    ROI -->|"READY 상태"| AXI
+    PB --> IRQ -->|"버튼 IRQ"| FSM
+    FSM <-->|"촬영 요청·픽셀·표시 값"| AXI
     AXI --> PWM --> SERVO
-    AXI --> VIEW
+    AXI -->|"결과·집계 숫자"| VIEW
     AXI --> DISPLAY
     DISPLAY --> TEXT
     DISPLAY --> FND
-    FSM --> GRADE --> RECORD
-    FSM --> DDR
+    FSM -->|"프레임 복사"| DDR --> GRADE --> RECORD
     RECORD --> FSM
-    DDR --> SD
-    RECORD --> SD
+    DDR -->|"앞뒤 BMP"| SD
+    RECORD -->|"결과·회차"| SD
     HOST --> FSM
     RTC --> RECORD
 ```
@@ -90,7 +90,7 @@ stateDiagram-v2
     state "앞면 위치 복귀" as Home
     state "전체 집계 표시" as Summary
     state "회차 집계 초기화 표시" as Clear
-    state "촬영 또는 저장 오류 표시" as Error
+    state "오류·재확인·취소 표시" as Error
 
     Idle --> Front: PB0 및 READY
     Front --> Flip: 앞면 복사 완료
@@ -108,11 +108,13 @@ stateDiagram-v2
     Front --> Idle: 촬영 프레임 정렬 실패
     Front --> Error: 검은 막대 배열 인식 실패
     Back --> BackAlign: 촬영 프레임 정렬 실패
-    Grade --> Error: 저장 실패
-    Error --> Home: 오류 표시 타이머 만료
+    Grade --> Error: 판독 재확인 또는 저장 실패
+    Error --> Home: 표시 타이머 만료
 ```
 
 ## 앞면 객관식 좌표
+
+[실제 OMR 카드 사진과 판독 영역](omr-card.md)
 
 네모 가이드는 카드가 화면 안에 들어왔는지 판단한다. 답안 칸 좌표는 동결한 사진의 **상단 검은 막대 27개**에서 구한다. 학년·반·번호·과목코드 영역의 막대 7개를 건너뛰고, 그다음 막대 5개를 객관식 **1~10번**의 1~5번 보기 열에 매핑한다. 뒤의 11~40번 영역은 채점 범위에서 제외한다.
 
