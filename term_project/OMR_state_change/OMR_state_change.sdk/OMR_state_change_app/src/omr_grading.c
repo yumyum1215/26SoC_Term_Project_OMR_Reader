@@ -13,19 +13,24 @@ static int dark(const uint16_t *frame, int x, int y)
     return red * 2U + green + blue * 2U < 100U;
 }
 
-static int black_ink(const uint16_t *frame, int x, int y)
-{
-    /* Suppress the stock form's cyan/blue printed lines and numbers. */
-    const unsigned pixel = frame[y * OMR_WIDTH + x];
-    return ((pixel >> 11) & 31U) < 14U &&
-           ((pixel >> 5) & 63U) < 30U && (pixel & 31U) < 16U;
-}
-
 static int paper(const uint16_t *frame, int x, int y)
 {
     const unsigned pixel = frame[y * OMR_WIDTH + x];
     return ((pixel >> 11) & 31U) >= 22U &&
            ((pixel >> 5) & 63U) >= 44U && (pixel & 31U) >= 22U;
+}
+
+static unsigned brightness(uint16_t pixel)
+{
+    return ((pixel >> 11) & 31U) * 2U + ((pixel >> 5) & 63U) + (pixel & 31U) * 2U;
+}
+
+static int bar_ink(const uint16_t *frame, int x, int y)
+{
+    const uint16_t *center = &frame[y * OMR_WIDTH + x];
+    const unsigned value = brightness(center[0]);
+    const unsigned left = brightness(center[-4]), right = brightness(center[4]);
+    return left >= 115 && right >= 115 && value + 19 <= left && value + 19 <= right;
 }
 
 static int timing_row(const uint16_t *frame, Point bars[27], int *pitch1000)
@@ -48,8 +53,7 @@ static int timing_row(const uint16_t *frame, Point bars[27], int *pitch1000)
         int length = 0, best = 0, center = 0;
         if (x < 455) {
             for (int y = band_start; y < band_end; ++y) {
-                if (black_ink(frame, x, y) && paper(frame, x - 4, y) &&
-                    paper(frame, x + 4, y)) {
+                if (bar_ink(frame, x, y)) {
                     ++length;
                     if (length > best) {
                         best = length;
@@ -59,7 +63,7 @@ static int timing_row(const uint16_t *frame, Point bars[27], int *pitch1000)
                     length = 0;
             }
         }
-        if (best >= 4 && best <= 13) {
+        if (best >= 3 && best <= 13) {
             weight += best;
             sum_x += x * best;
             sum_y += center * best;
@@ -86,6 +90,22 @@ static int timing_row(const uint16_t *frame, Point bars[27], int *pitch1000)
         if (spacing < expected * 69 / 100 || spacing > expected * 133 / 100)
             return 0;
     }
+    /* Fit the timing row using its median height to resist a noisy bar center. */
+    int offsets[27];
+    const int x_span = bars[26].x - bars[0].x;
+    const int y_span = ((bars[24].y + bars[25].y + bars[26].y) -
+                        (bars[1].y + bars[2].y + bars[3].y)) / 3;
+    for (int i = 0; i < 27; ++i) {
+        int value = bars[i].y - (bars[i].x - bars[0].x) * y_span / x_span;
+        int j = i;
+        while (j > 0 && offsets[j - 1] > value) {
+            offsets[j] = offsets[j - 1];
+            --j;
+        }
+        offsets[j] = value;
+    }
+    for (int i = 0; i < 27; ++i)
+        bars[i].y = offsets[13] + (bars[i].x - bars[0].x) * y_span / x_span;
     *pitch1000 = pitch;
     return 1;
 }
@@ -112,9 +132,9 @@ static int cell_ink(const uint16_t *frame, Point mark, Point direction,
         return -1;
 
     int ink = 0;
-    for (int dy = -3; dy <= 3; ++dy)
-        for (int dx = -1; dx <= 1; ++dx)
-            ink += black_ink(frame, x + dx, y + dy);
+    for (int dy = -4; dy <= 4; ++dy)
+        for (int dx = -2; dx <= 2; ++dx)
+            ink += bar_ink(frame, x + dx, y + dy);
     return ink;
 }
 
