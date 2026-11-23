@@ -144,8 +144,11 @@ module omr_video (
                  ((y == guide_top || y == guide_bottom) && x >= 66 && x <= 497);
     wire [16:0] read_addr = phase == 0 ? display_addr : command[16:0];
     wire result_view = command[26:24] != 0;
-    wire [2:0] glyph = (x - 10'd74) / 10'd48;
-    wire [9:0] glyph_x = (x - 10'd74) % 10'd48;
+    // Rotate synthetic screens for the panel's physical mounting.
+    wire [9:0] overlay_x = 10'd563 - x;
+    wire [8:0] overlay_y = 9'd295 - y;
+    wire [2:0] glyph = (overlay_x - 10'd74) / 10'd48;
+    wire [9:0] glyph_x = (overlay_x - 10'd74) % 10'd48;
     wire [3:0] digit = panel_digits[31 - glyph * 4 -: 4];
     reg [6:0] segments;
     always @* begin
@@ -164,14 +167,14 @@ module omr_video (
         endcase
     end
     wire bar = glyph_x >= 8 && glyph_x < 28;
-    wire paint = x >= 74 && x < 458 && (
-        (segments[0] && bar && y >= 110 && y < 114) ||
-        (segments[1] && glyph_x >= 28 && glyph_x < 32 && y >= 114 && y < 138) ||
-        (segments[2] && glyph_x >= 28 && glyph_x < 32 && y >= 142 && y < 166) ||
-        (segments[3] && bar && y >= 166 && y < 170) ||
-        (segments[4] && glyph_x >= 4 && glyph_x < 8 && y >= 142 && y < 166) ||
-        (segments[5] && glyph_x >= 4 && glyph_x < 8 && y >= 114 && y < 138) ||
-        (segments[6] && bar && y >= 138 && y < 142));
+    wire paint = overlay_x >= 74 && overlay_x < 458 && (
+        (segments[0] && bar && overlay_y >= 110 && overlay_y < 114) ||
+        (segments[1] && glyph_x >= 28 && glyph_x < 32 && overlay_y >= 114 && overlay_y < 138) ||
+        (segments[2] && glyph_x >= 28 && glyph_x < 32 && overlay_y >= 142 && overlay_y < 166) ||
+        (segments[3] && bar && overlay_y >= 166 && overlay_y < 170) ||
+        (segments[4] && glyph_x >= 4 && glyph_x < 8 && overlay_y >= 142 && overlay_y < 166) ||
+        (segments[5] && glyph_x >= 4 && glyph_x < 8 && overlay_y >= 114 && overlay_y < 138) ||
+        (segments[6] && bar && overlay_y >= 138 && overlay_y < 142));
     wire [15:0] banner_color = command[26:24] == 1 ? 16'h07e0 :
                                command[26:24] == 2 ? 16'h07ff :
                                command[26:24] == 3 ? 16'hffe0 : 16'hf800;
@@ -315,25 +318,25 @@ module omr_video (
         end
     endfunction
 
-    wire graph_slot_active = x >= 58 && x < 502;
-    wire [9:0] graph_x = x - 10'd58;
+    wire graph_slot_active = overlay_x >= 58 && overlay_x < 502;
+    wire [9:0] graph_x = overlay_x - 10'd58;
     wire [2:0] graph_slot = graph_x / 10'd74;
     wire [6:0] slot_x = graph_x % 10'd74;
     wire score_occurred = graph_score[graph_slot] != 16'hffff;
     wire score_column = graph_slot_active && score_occurred &&
                         slot_x >= 18 && slot_x < 56 &&
-                        y >= 9'd226 - {1'b0, graph_height[graph_slot]} && y <= 226;
-    wire [47:0] subject_pixels = subject_row(graph_slot, y - 9'd230);
+                        overlay_y >= 9'd226 - {1'b0, graph_height[graph_slot]} && overlay_y <= 226;
+    wire [47:0] subject_pixels = subject_row(graph_slot, overlay_y - 9'd230);
     wire subject_label = graph_slot_active && slot_x >= 13 && slot_x < 61 &&
-                         y >= 230 && y < 250 && subject_pixels[7'd60 - slot_x];
+                         overlay_y >= 230 && overlay_y < 250 && subject_pixels[7'd60 - slot_x];
     wire score_label = graph_slot_active && slot_x >= 22 && slot_x < 54 &&
-                       y >= 252 && y < 262 &&
-                       digit_pixel({graph_score[graph_slot], 4'd0}, slot_x - 7'd22, y - 9'd252);
-    wire student_label = x >= 261 && x < 301 && y >= 34 && y < 44 &&
-                         digit_pixel(graph_student, x - 10'd261, y - 9'd34);
-    wire scale_label = x >= 48 && x < 80 && y >= 61 && y < 71 &&
-                       digit_pixel({graph_scale, 4'd0}, x - 10'd48, y - 9'd61);
-    wire graph_grid = graph_slot_active && (y == 226 || y == 152 || y == 78);
+                       overlay_y >= 252 && overlay_y < 262 &&
+                       digit_pixel({graph_score[graph_slot], 4'd0}, slot_x - 7'd22, overlay_y - 9'd252);
+    wire student_label = overlay_x >= 261 && overlay_x < 301 && overlay_y >= 34 && overlay_y < 44 &&
+                         digit_pixel(graph_student, overlay_x - 10'd261, overlay_y - 9'd34);
+    wire scale_label = overlay_x >= 48 && overlay_x < 80 && overlay_y >= 61 && overlay_y < 71 &&
+                       digit_pixel({graph_scale, 4'd0}, overlay_x - 10'd48, overlay_y - 9'd61);
+    wire graph_grid = graph_slot_active && (overlay_y == 226 || overlay_y == 152 || overlay_y == 78);
     reg [15:0] column_color;
     always @* begin
         case (graph_slot)
@@ -375,7 +378,7 @@ module omr_video (
                 TFTLCD_Vsync <= y >= 10 && y < 284;
                 TFTLCD_D <= !active ? 16'd0 :
                             graph_view ? graph_pixel :
-                            result_view ? (y < 24 || paint ? banner_color : 16'h0024) :
+                            result_view ? (overlay_y < 24 || paint ? banner_color : 16'h0024) :
                             guide ? (aligned_sync[1] ? 16'h07e0 : 16'hf800) :
                             valid_sync[1] ? {read_data[4:0], read_data[10:5], read_data[15:11]} : 16'h001f;
             end
