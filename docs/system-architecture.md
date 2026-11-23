@@ -11,7 +11,7 @@
 ```mermaid
 flowchart LR
     CAMERA["카메라"]
-    PB["버튼 1–3"]
+    PB["버튼 1–4"]
     SERVO["서보와 ㄷ자형 회전 틀"]
     TFT["TFT LCD"]
     TEXT["Text LCD"]
@@ -70,11 +70,12 @@ flowchart LR
 | 입력 | 동작 | 표시 |
 |---|---|---|
 | **IDLE** | 검은 막대가 위로 오게 카드를 놓고 앞면 전체를 네모 가이드 안에 맞춘다. | TFT 가이드가 빨강에서 초록으로 바뀌고 Text LCD에 `READY - PRESS 1`. |
-| **버튼 1 · PB0** | 앞면 `READY`에서 한 번 눌러 앞면 촬영·DDR 복사·뒤집기를 수행한다. 안정화 후 뒷면 전체를 같은 가이드 안에 맞추고 `READY`에서 다시 눌러야 뒷면을 촬영한다. | 뒷면 저장까지 성공하면 개인 점수를 표시한 뒤 앞면으로 복귀한다. |
-| **버튼 2 · PB1** | 이번 회차 전체 집계 조회. | TFT 전체 집계, Text LCD 요약, 7-segment에 전체 응시자 수 4자리와 집계 인원 수 4자리. 표시 시간이 지나면 IDLE. |
-| **버튼 3 · PB2** | 이번 회차의 집계를 초기화. | TFT에 초기화 완료, Text LCD와 7-segment에 초기 상태. 표시 시간이 지나면 IDLE. |
+| **버튼 1 · PB0** | 앞면 `READY`에서 객관식 촬영·DDR 복사·뒤집기를 시작한다. | Text LCD에 `READY - PRESS 1`. 뒤집기 후 뒷면 정렬 화면으로 전환한다. |
+| **버튼 2 · PB1** | 뒤집기 안정화 후 뒷면 `READY`에서 주관식 촬영을 시작한다. | Text LCD에 `READY - PRESS 2`. 채점·저장 후 점수를 표시하고 앞면으로 복귀한다. |
+| **버튼 3 · PB2** | 이번 회차 전체 집계 조회. | TFT 전체 집계, Text LCD 요약, 7-segment에 전체 응시자 수 4자리와 집계 인원 수 4자리. 표시 시간이 지나면 IDLE. |
+| **버튼 4 · PB3** | IDLE에서 새 회차를 시작하고, 뒷면 정렬 중에는 진행 중인 채점을 취소한다. | TFT에 초기화 완료, Text LCD와 7-segment에 초기 상태. 표시 시간이 지나면 IDLE. |
 
-정렬이 풀린 상태에서 버튼 1을 누르면 해당 면은 촬영되지 않는다. 뒷면 정렬 중 버튼 4(PB3)로 채점 건을 취소할 수 있다. 버튼 2·3은 IDLE에서 받으며 촬영·저장 중 입력은 다음 동작에 넘기지 않는다. **전체 응시자 수**는 UART 사전 설정값이고, **집계 인원 수**는 이번 회차에서 채점과 저장이 완료된 고유 학번 수다. SD의 사진과 개인 결과는 회차별로 관리한다.
+각 촬영 버튼은 해당 면의 정렬 대기 상태에서 `READY`일 때만 동작한다. 집계와 새 회차는 IDLE에서 실행한다. 촬영·저장 중 입력은 다음 동작에 넘기지 않는다. **전체 응시자 수**는 UART 사전 설정값이고, **집계 인원 수**는 이번 회차에서 채점과 저장이 완료된 고유 학번 수다. SD의 사진과 개인 결과는 회차별로 관리한다.
 
 ```mermaid
 stateDiagram-v2
@@ -94,15 +95,15 @@ stateDiagram-v2
     Idle --> Front: PB0 및 READY
     Front --> Flip: 앞면 복사 완료
     Flip --> BackAlign: 회전과 안정화 대기 완료
-    BackAlign --> Back: PB0 및 뒷면 READY
-    BackAlign --> Home: PB3 취소
+    BackAlign --> Back: PB1 및 뒷면 READY
+    BackAlign --> Error: PB3 취소
     Back --> Grade: 뒷면 복사 완료
     Grade --> Result: 저장 완료
     Result --> Home: 표시 타이머 만료
     Home --> Idle: 복귀와 안정화 대기 완료
-    Idle --> Summary: PB1
+    Idle --> Summary: PB2
     Summary --> Idle: 표시 타이머 만료
-    Idle --> Clear: PB2
+    Idle --> Clear: PB3
     Clear --> Idle: 표시 타이머 만료
     Front --> Idle: 촬영 프레임 정렬 실패
     Front --> Error: 검은 막대 배열 인식 실패

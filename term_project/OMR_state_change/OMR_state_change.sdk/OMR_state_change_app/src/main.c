@@ -28,6 +28,10 @@
 #define STAT_CAMERA (1U << 17)
 #define STAT_HELD (1U << 16)
 #define BUTTON_IRQ 1U
+#define BUTTON_FRONT (1U << 0)
+#define BUTTON_BACK (1U << 1)
+#define BUTTON_SUMMARY (1U << 2)
+#define BUTTON_CLEAR_CANCEL (1U << 3)
 #define FRONT_PULSE_US 1400U
 #define BACK_PULSE_US 1600U
 #define SETTLE_MS 800U
@@ -308,9 +312,10 @@ int main(void)
 
         if (state == FRONT_IDLE || state == BACK_ALIGN) {
             const int ready = aligned && passed(until);
+            const u32 capture_button = state == FRONT_IDLE ? BUTTON_FRONT : BUTTON_BACK;
             if (ready != old_ready) {
                 if (state == BACK_ALIGN)
-                    screen("BACK SIDE", ready ? "READY - PRESS 1" : "ALIGN IN BOX");
+                    screen("BACK SIDE", ready ? "READY - PRESS 2" : "ALIGN IN BOX");
                 else if (!sd_ready)
                     screen("SD / KEY ERROR", "CHECK KEY.TXT");
                 else if (!student_id[0])
@@ -320,7 +325,7 @@ int main(void)
                 old_ready = ready;
             }
 
-            if (state == FRONT_IDLE && (events & 2U)) {
+            if (state == FRONT_IDLE && (events & BUTTON_SUMMARY)) {
                 char count[17];
                 snprintf(count, sizeof count, "COUNT %u", round_info.graded);
                 screen("ROUND SUMMARY", count);
@@ -331,7 +336,7 @@ int main(void)
                 serial("\r\n");
                 state = SUMMARY;
                 until = after_ms(2500);
-            } else if (state == FRONT_IDLE && (events & 4U)) {
+            } else if (state == FRONT_IDLE && (events & BUTTON_CLEAR_CANCEL)) {
                 if (sd_ready && omr_storage_clear(&round_info)) {
                     screen("NEW ROUND", "SUMMARY CLEARED");
                     summary_digits();
@@ -342,11 +347,11 @@ int main(void)
                     state = ERROR;
                 }
                 until = after_ms(2200);
-            } else if (state == BACK_ALIGN && (events & 8U)) {
+            } else if (state == BACK_ALIGN && (events & BUTTON_CLEAR_CANCEL)) {
                 screen("CANCELLED", "RETURNING FRONT");
                 state = ERROR;
                 until = after_ms(1500);
-            } else if ((events & 1U) && ready && sd_ready && student_id[0]) {
+            } else if ((events & capture_button) && ready && sd_ready && student_id[0]) {
                 if (state == FRONT_IDLE && omr_storage_duplicate(&round_info, student_id)) {
                     screen("ALREADY GRADED", "SELECT OTHER ID");
                     state = ERROR;
