@@ -33,6 +33,8 @@ flowchart LR
 
 [![실제 OMR 카드 앞면. 상단 검은 막대와 객관식 1~40번이 보인다.](docs/images/omr-card-front.jpg)](docs/omr-card.md)
 
+[주관식 뒷면 사진과 두 답란 위치](docs/omr-card.md#뒷면-주관식-답란)
+
 상단 검은 막대 **27개** 중 **8~12번째**를 객관식 보기 1~5의 기준으로 삼아 첫 번째 문항 묶음인 **1~10번**을 읽는다. [사진의 판독 위치와 좌표 계산](docs/omr-card.md)
 
 ## 과목코드
