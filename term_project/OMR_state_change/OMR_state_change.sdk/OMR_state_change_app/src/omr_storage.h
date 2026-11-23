@@ -17,6 +17,13 @@ typedef struct {
     unsigned total_points;
 } OmrSummary;
 
+typedef struct {
+    unsigned student;
+    unsigned scale;
+    int score[OMR_LAST_SUBJECT];
+} OmrGraph;
+
+int omr_storage_next_graph(unsigned previous_student, OmrGraph *graph);
 int omr_storage_open(OmrLayout *subject_layout, OmrSummary *summary);
 int omr_storage_load_subject(unsigned subject, OmrExam *exam);
 int omr_storage_summary(OmrSummary *summary);

@@ -8,6 +8,26 @@
 static FATFS sd;
 
 #define DATA_DIR "0:/DATA"
+#define STUDENT_SLOTS 30000U
+#define NO_SCORE 0xffffU
+
+static void subject_path(char root[16], unsigned subject)
+{
+    snprintf(root, 16, DATA_DIR "/S%02u", subject);
+}
+
+static int subject_directory(const char *name)
+{
+    return strlen(name) == 3 && name[0] == 'S' && name[1] == '0' &&
+           name[2] >= '1' && name[2] <= '6';
+}
+
+static unsigned student_slot(const char *id)
+{
+    return (unsigned)(id[1] - '1') * 10000U +
+           (unsigned)(id[3] - '0') * 1000U + (unsigned)(id[4] - '0') * 100U +
+           (unsigned)(id[6] - '0') * 10U + (unsigned)(id[7] - '0');
+}
 
 static int student_record(const char *id)
 {
@@ -17,12 +37,12 @@ static int student_record(const char *id)
            isdigit((unsigned char)id[6]) && isdigit((unsigned char)id[7]);
 }
 
-static void record_path(char path[48], const char *id, const char *file)
+static void record_path(char path[48], const char *root, const char *id, const char *file)
 {
     if (file)
-        snprintf(path, 48, DATA_DIR "/%s/%s", id, file);
+        snprintf(path, 48, "%s/%s/%s", root, id, file);
     else
-        snprintf(path, 48, DATA_DIR "/%s", id);
+        snprintf(path, 48, "%s/%s", root, id);
 }
 
 static int is_missing(FRESULT status)
@@ -31,33 +51,33 @@ static int is_missing(FRESULT status)
 }
 
 /* Remove only files owned by the application. */
-static int remove_record(const char *id)
+static int remove_record(const char *root, const char *id)
 {
     static const char *const files[] = {"FRONT.BMP", "BACK.BMP", "RESULT.TXT", "REVIEW.TXT"};
     char path[48];
     for (unsigned i = 0; i < sizeof files / sizeof files[0]; ++i) {
-        record_path(path, id, files[i]);
+        record_path(path, root, id, files[i]);
         const FRESULT status = f_unlink(path);
         if (status != FR_OK && !is_missing(status))
             return 0;
     }
-    record_path(path, id, NULL);
+    record_path(path, root, id, NULL);
     const FRESULT status = f_unlink(path);
     return status == FR_OK || is_missing(status);
 }
 
-static int recover_record(const char *backup_id)
+static int recover_record(const char *root, const char *backup_id)
 {
     char id[9], live[48], backup[48];
     FILINFO info;
     strcpy(id, backup_id);
     id[0] = 'G';
-    record_path(live, id, NULL);
-    record_path(backup, backup_id, NULL);
+    record_path(live, root, id, NULL);
+    record_path(backup, root, backup_id, NULL);
     const FRESULT status = f_stat(live, &info);
     if (is_missing(status))
         return f_rename(backup, live) == FR_OK;
-    return status == FR_OK && (info.fattrib & AM_DIR) && remove_record(backup_id);
+    return status == FR_OK && (info.fattrib & AM_DIR) && remove_record(root, backup_id);
 }
 static int read_text(const char *path, char *text, UINT capacity)
 {
@@ -129,52 +149,78 @@ static int parse_exam(char *text, OmrExam *exam)
     return max_score <= 9999U;
 }
 
-int omr_storage_clear(void)
+static int clear_directory(const char *root)
 {
     DIR dir;
     FILINFO item;
-    if (f_opendir(&dir, DATA_DIR) != FR_OK)
+    if (f_opendir(&dir, root) != FR_OK)
         return 0;
 
-    FRESULT scan;
+    FRESULT status;
     int ok = 1;
-    while ((scan = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
-        if ((item.fattrib & AM_DIR) && student_record(item.fname) && !remove_record(item.fname))
-            ok = 0;
+    while ((status = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
+        if (!(item.fattrib & AM_DIR))
+            continue;
+        if (student_record(item.fname)) {
+            if (!remove_record(root, item.fname))
+                ok = 0;
+        } else if (strcmp(root, DATA_DIR) == 0 && subject_directory(item.fname)) {
+            char folder[48];
+            record_path(folder, root, item.fname, NULL);
+            if (!clear_directory(folder))
+                ok = 0;
+        }
     }
-    return f_closedir(&dir) == FR_OK && scan == FR_OK && ok;
+    return f_closedir(&dir) == FR_OK && status == FR_OK && ok;
 }
 
-int omr_storage_summary(OmrSummary *summary)
+int omr_storage_clear(void)
+{
+    return clear_directory(DATA_DIR);
+}
+
+static int recover_directory(const char *root)
 {
     DIR dir;
     FILINFO item;
-    FRESULT scan;
-    int ok = 1;
-    char path[48], record[400];
-    OmrSummary result = {0, 0};
-    if (f_opendir(&dir, DATA_DIR) != FR_OK)
+    FRESULT status = f_opendir(&dir, root);
+    if (is_missing(status))
+        return 1;
+    if (status != FR_OK)
         return 0;
 
-    /* Restore the previous complete record if an overwrite was interrupted. */
-    while ((scan = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
+    int ok = 1;
+    while ((status = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
         if ((item.fattrib & AM_DIR) && student_record(item.fname) &&
-            item.fname[0] == 'B' && !recover_record(item.fname))
+            item.fname[0] == 'B' && !recover_record(root, item.fname))
             ok = 0;
     }
-    if (f_closedir(&dir) != FR_OK || scan != FR_OK || !ok ||
-        f_opendir(&dir, DATA_DIR) != FR_OK)
+    return f_closedir(&dir) == FR_OK && status == FR_OK && ok;
+}
+
+typedef void (*ResultReader)(const char *id, unsigned subject, unsigned score, void *context);
+
+static int scan_results(const char *root, unsigned subject, ResultReader read_result, void *context)
+{
+    DIR dir;
+    FILINFO item;
+    FRESULT status = f_opendir(&dir, root);
+    if (is_missing(status))
+        return 1;
+    if (status != FR_OK)
         return 0;
 
-    while ((scan = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
-        if (!(item.fattrib & AM_DIR) || !student_record(item.fname) || item.fname[0] != 'G')
+    int ok = 1;
+    char path[48], record[400];
+    while ((status = f_readdir(&dir, &item)) == FR_OK && item.fname[0]) {
+        if (!(item.fattrib & AM_DIR) || item.fname[0] != 'G' || !student_record(item.fname))
             continue;
-        record_path(path, item.fname, "RESULT.TXT");
-        FILINFO file_info;
-        const FRESULT status = f_stat(path, &file_info);
-        if (is_missing(status))
-            continue; /* A review-only submission does not enter the total. */
-        if (status != FR_OK || !read_text(path, record, sizeof record)) {
+        record_path(path, root, item.fname, "RESULT.TXT");
+        FILINFO info;
+        FRESULT file_status = f_stat(path, &info);
+        if (is_missing(file_status))
+            continue;
+        if (file_status != FR_OK || !read_text(path, record, sizeof record)) {
             ok = 0;
             continue;
         }
@@ -184,16 +230,82 @@ int omr_storage_summary(OmrSummary *summary)
             ok = 0;
             continue;
         }
-        ++result.graded;
-        result.total_points += (unsigned)score;
-    }
-    if (f_closedir(&dir) != FR_OK || scan != FR_OK || !ok)
-        return 0;
 
+        unsigned recorded_subject = subject;
+        if (subject == 0) {
+            /* Earlier firmware stored a single record directly under DATA. */
+            const char *code = strstr(record, "\nSUBJECT=");
+            if (!code || code[9] != '0' || code[10] < '1' || code[10] > '6')
+                continue;
+            recorded_subject = (unsigned)(code[10] - '0');
+            char modern[16];
+            subject_path(modern, recorded_subject);
+            record_path(path, modern, item.fname, NULL);
+            file_status = f_stat(path, &info);
+            if (file_status == FR_OK)
+                continue; /* A current review record also replaces a legacy score. */
+            if (!is_missing(file_status)) {
+                ok = 0;
+                continue;
+            }
+        }
+        read_result(item.fname, recorded_subject, (unsigned)score, context);
+    }
+    return f_closedir(&dir) == FR_OK && status == FR_OK && ok;
+}
+
+static unsigned char counted_students[(STUDENT_SLOTS + 7U) / 8U];
+static uint16_t graph_scores[STUDENT_SLOTS][OMR_LAST_SUBJECT];
+static unsigned graph_scale;
+
+static void count_result(const char *id, unsigned subject, unsigned score, void *context)
+{
+    OmrSummary *total = context;
+    const unsigned slot = student_slot(id), mask = 1U << (slot & 7U);
+    if (!(counted_students[slot / 8U] & mask)) {
+        counted_students[slot / 8U] |= (unsigned char)mask;
+        ++total->graded;
+    }
+    graph_scores[slot][subject - OMR_FIRST_SUBJECT] = (uint16_t)score;
+    if (score > graph_scale)
+        graph_scale = score;
+    total->total_points += score;
+}
+
+int omr_storage_summary(OmrSummary *summary)
+{
+    OmrSummary result = {0, 0};
+    memset(counted_students, 0, sizeof counted_students);
+    memset(graph_scores, 0xff, sizeof graph_scores);
+    graph_scale = 100;
+    for (unsigned subject = OMR_FIRST_SUBJECT; subject <= OMR_LAST_SUBJECT; ++subject) {
+        char root[16];
+        subject_path(root, subject);
+        if (!recover_directory(root) || !scan_results(root, subject, count_result, &result))
+            return 0;
+    }
+    if (!recover_directory(DATA_DIR) || !scan_results(DATA_DIR, 0, count_result, &result))
+        return 0;
     *summary = result;
     return 1;
 }
 
+int omr_storage_next_graph(unsigned previous_student, OmrGraph *graph)
+{
+    const unsigned start = previous_student >= 10000U ? previous_student - 9999U : 0;
+    for (unsigned i = start; i < STUDENT_SLOTS; ++i) {
+        if (!(counted_students[i / 8U] & (1U << (i & 7U))))
+            continue;
+        graph->student = 10000U + i;
+        graph->scale = graph_scale;
+        for (unsigned subject = 0; subject < OMR_LAST_SUBJECT; ++subject) {
+            const uint16_t score = graph_scores[i][subject];
+            graph->score[subject] = score == NO_SCORE ? -1 : (int)score;
+        }
+        return 1;
+    }
+    return 0;
+}
 int omr_storage_open(OmrLayout *subject_layout, OmrSummary *summary)
 {
     char settings[320];
@@ -260,31 +372,36 @@ int omr_storage_save(const char *id, const char *name,
                      const int answers[12], const uint16_t *front,
                      const uint16_t *back)
 {
-    char path[48], live[48], staging[48], backup[48], record[370];
+    char root[16], path[48], live[48], staging[48], backup[48], record[370];
     char stage_id[9], backup_id[9];
     FIL file;
     FILINFO info;
-    if (!student_record(id) || id[0] != 'G')
+    if (!student_record(id) || id[0] != 'G' ||
+        subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT)
+        return 0;
+    subject_path(root, subject);
+    const FRESULT folder_status = f_mkdir(root);
+    if (folder_status != FR_OK && folder_status != FR_EXIST)
         return 0;
     strcpy(stage_id, id);
     strcpy(backup_id, id);
     stage_id[0] = 'T';
     backup_id[0] = 'B';
-    record_path(live, id, NULL);
-    record_path(staging, stage_id, NULL);
-    record_path(backup, backup_id, NULL);
+    record_path(live, root, id, NULL);
+    record_path(staging, root, stage_id, NULL);
+    record_path(backup, root, backup_id, NULL);
 
     const FRESULT backup_status = f_stat(backup, &info);
     if (!is_missing(backup_status) &&
-        (backup_status != FR_OK || !(info.fattrib & AM_DIR) || !recover_record(backup_id)))
+        (backup_status != FR_OK || !(info.fattrib & AM_DIR) || !recover_record(root, backup_id)))
         return 0;
-    if (!remove_record(stage_id) || f_mkdir(staging) != FR_OK)
+    if (!remove_record(root, stage_id) || f_mkdir(staging) != FR_OK)
         return 0;
 
-    record_path(path, stage_id, "FRONT.BMP");
+    record_path(path, root, stage_id, "FRONT.BMP");
     if (!save_bmp(path, front))
         return 0;
-    record_path(path, stage_id, "BACK.BMP");
+    record_path(path, root, stage_id, "BACK.BMP");
     if (!save_bmp(path, back))
         return 0;
 
@@ -294,7 +411,7 @@ int omr_storage_save(const char *id, const char *name,
         score, id, name, identity->grade, identity->class_number, identity->student_number,
         subject, timestamp, review ? "REVIEW" : "GRADED", answers[0], answers[1], answers[2], answers[3],
         answers[4], answers[5], answers[6], answers[7], answers[8], answers[9], answers[10], answers[11]);
-    record_path(path, stage_id, review ? "REVIEW.TXT" : "RESULT.TXT");
+    record_path(path, root, stage_id, review ? "REVIEW.TXT" : "RESULT.TXT");
     if (size < 0 || size >= (int)sizeof record ||
         f_open(&file, path, FA_CREATE_NEW | FA_WRITE) != FR_OK)
         return 0;
@@ -314,6 +431,6 @@ int omr_storage_save(const char *id, const char *name,
         return 0;
     }
     if (replacing)
-        (void)remove_record(backup_id);
+        (void)remove_record(root, backup_id);
     return 1;
 }

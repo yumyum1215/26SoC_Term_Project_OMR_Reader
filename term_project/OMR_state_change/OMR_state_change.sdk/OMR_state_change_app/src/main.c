@@ -23,6 +23,8 @@
 #define CMD_READ (1U << 30)
 #define CMD_REQUIRE_ALIGNED (1U << 29)
 #define VIDEO_VIEW_SHIFT 24U
+#define VIDEO_GRAPH_VIEW 5U
+#define GRAPH_DISPLAY_MS 2000U
 #define STAT_CAMERA_NACK (1U << 20)
 #define STAT_ALIGNED (1U << 19)
 #define STAT_READ (1U << 18)
@@ -46,7 +48,7 @@ static OmrLayout subject_layout;
 static unsigned active_subject;
 static const char *const subject_names[OMR_LAST_SUBJECT] = {
     "KOREAN", "MATH", "ENGLISH", "KOREAN HISTORY",
-    "INTEGRATED SCIENCE", "INTEGRATED SOCIAL STUDIES"
+    "INTEGRATED SOCIAL STUDIES", "INTEGRATED SCIENCE"
 };
 static OmrSummary totals;
 static XScuGic gic;
@@ -123,6 +125,29 @@ static void tft_view(unsigned view)
     video_write((video_command & CMD_READ) | ((u32)view << VIDEO_VIEW_SHIFT));
 }
 
+static void graph_write(unsigned field, unsigned slot, u32 value)
+{
+    video_write((video_command & CMD_READ) | (VIDEO_GRAPH_VIEW << VIDEO_VIEW_SHIFT) |
+                (1U << 27) | ((u32)field << 28) | ((u32)slot << 21) | value);
+}
+
+static void show_graph(const OmrGraph *graph)
+{
+    char label[17], count[17];
+    snprintf(label, sizeof label, "ID %05u", graph->student);
+    snprintf(count, sizeof count, "COUNT %u", totals.graded);
+    screen(label, count);
+    graph_write(0, 0, ((u32)(graph->student / 10000U) << 16) | bcd4(graph->student));
+    graph_write(1, 0, bcd4(graph->scale));
+    for (unsigned i = 0; i < OMR_LAST_SUBJECT; ++i) {
+        const int score = graph->score[i];
+        graph_write(2, i, score < 0 ? 0xffffU : bcd4((unsigned)score));
+        const unsigned height = (score >= 0 && graph->scale > 0) ?
+                                  (unsigned)score * 148U / graph->scale : 0U;
+        graph_write(3, i, height);
+    }
+    tft_view(VIDEO_GRAPH_VIEW);
+}
 static u32 video_status(void)
 {
     return Xil_In32(VIDEO + 8U);
@@ -326,6 +351,7 @@ int main(void)
     serial("OMR: TOTAL <count>, ID <grade,class,number as 5 digits> <name>\r\n");
 
     State state = FRONT_IDLE;
+    OmrGraph graph = {0};
     XTime until = after_ms(SETTLE_MS);
     int old_ready = -1;
     int old_camera_failed = -1;
@@ -359,7 +385,11 @@ int main(void)
                     snprintf(count, sizeof count, "COUNT %u", totals.graded);
                     screen("DATA SUMMARY", count);
                     summary_digits();
-                    tft_view(2);
+                    graph.student = 0;
+                    if (omr_storage_next_graph(0, &graph))
+                        show_graph(&graph);
+                    else
+                        tft_view(2);
                     snprintf(count, sizeof count, "POINTS %u", totals.total_points);
                     serial(count);
                     serial("\r\n");
@@ -368,7 +398,7 @@ int main(void)
                     screen("SUMMARY FAILED", "CHECK SD DATA");
                     state = ERROR;
                 }
-                until = after_ms(2500);
+                until = after_ms(GRAPH_DISPLAY_MS);
             } else if (state == FRONT_IDLE && (events & BUTTON_CLEAR_CANCEL)) {
                 if (sd_ready && omr_storage_clear()) {
                     totals = (OmrSummary){0, 0};
@@ -441,6 +471,10 @@ int main(void)
                 }
                 (void)take_buttons();
             }
+        } else if (state == SUMMARY && graph.student != 0 && passed(until) &&
+                   omr_storage_next_graph(graph.student, &graph)) {
+            show_graph(&graph);
+            until = after_ms(GRAPH_DISPLAY_MS);
         } else if (passed(until)) {
             tft_view(0);
             Xil_Out32(SERVO, FRONT_PULSE_US);
