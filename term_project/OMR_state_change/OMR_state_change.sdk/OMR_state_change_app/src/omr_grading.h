@@ -15,6 +15,7 @@ typedef struct {
     int left, top, right, bottom;
 } OmrBox;
 
+int omr_subject(const uint16_t *frame, const OmrLayout *layout);
 int omr_front(const uint16_t *frame, const OmrLayout *layout,
               int answers[OMR_QUESTIONS]);
 void omr_back(const uint16_t *frame, const OmrBox boxes[2], int answers[2]);

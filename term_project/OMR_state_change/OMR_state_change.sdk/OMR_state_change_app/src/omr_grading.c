@@ -90,6 +90,69 @@ static int timing_row(const uint16_t *frame, Point bars[27], int *pitch1000)
     return 1;
 }
 
+static Point row_direction(const Point bars[27])
+{
+    Point direction = {0, 0};
+    for (int col = 0; col < 5; ++col) {
+        direction.x += bars[22 + col].x - bars[col].x;
+        direction.y += bars[22 + col].y - bars[col].y;
+    }
+    return direction;
+}
+
+static int cell_ink(const uint16_t *frame, Point mark, Point direction,
+                    const OmrLayout *layout, int pitch, int row)
+{
+    const int distance = (pitch * (layout->first_row_pitch +
+                                     row * layout->row_step_pitch) + 500000) / 1000000;
+    const int tilt = direction.y * distance;
+    const int x = mark.x - (tilt + (tilt < 0 ? -direction.x : direction.x) / 2) / direction.x;
+    const int y = mark.y + distance;
+    if (x < 28 || x >= 452 || y < 20 || y >= 251)
+        return -1;
+
+    int ink = 0;
+    for (int dy = -3; dy <= 3; ++dy)
+        for (int dx = -1; dx <= 1; ++dx)
+            ink += black_ink(frame, x + dx, y + dy);
+    return ink;
+}
+
+static int choose_mark(int best, int second, int selected)
+{
+    return best < 6 ? OMR_BLANK :
+           (best < 9 || second >= 6 || best - second < 5) ? OMR_REVIEW : selected;
+}
+
+int omr_subject(const uint16_t *frame, const OmrLayout *layout)
+{
+    Point bars[27];
+    int pitch, code = 0;
+    if (!timing_row(frame, bars, &pitch))
+        return OMR_REVIEW;
+    const Point direction = row_direction(bars);
+
+    /* The last two of the seven metadata columns are subject tens and ones. */
+    for (int column = 5; column <= 6; ++column) {
+        int best = 0, second = 0, selected = OMR_BLANK;
+        for (int digit = 0; digit <= 9; ++digit) {
+            const int ink = cell_ink(frame, bars[column], direction, layout, pitch, digit);
+            if (ink < 0)
+                return OMR_REVIEW;
+            if (ink > best) {
+                second = best;
+                best = ink;
+                selected = digit;
+            } else if (ink > second)
+                second = ink;
+        }
+        const int digit = choose_mark(best, second, selected);
+        if (digit < 0)
+            return digit;
+        code = code * 10 + digit;
+    }
+    return code;
+}
 int omr_front(const uint16_t *frame, const OmrLayout *layout,
               int answers[OMR_QUESTIONS])
 {
@@ -97,27 +160,14 @@ int omr_front(const uint16_t *frame, const OmrLayout *layout,
     int pitch;
     if (!timing_row(frame, bars, &pitch))
         return 0;
-    int slope_dx = 0, slope_dy = 0;
-    for (int col = 0; col < 5; ++col) {
-        slope_dx += bars[22 + col].x - bars[col].x;
-        slope_dy += bars[22 + col].y - bars[col].y;
-    }
+    const Point direction = row_direction(bars);
 
     for (int row = 0; row < OMR_QUESTIONS; ++row) {
         int best = 0, second = 0, selected = OMR_BLANK;
-        const int distance = (pitch * (layout->first_row_pitch +
-                                         row * layout->row_step_pitch) + 500000) / 1000000;
         for (int col = 0; col < 5; ++col) {
-            const Point mark = bars[7 + col];
-            const int tilt = slope_dy * distance;
-            const int x = mark.x - (tilt + (tilt < 0 ? -slope_dx : slope_dx) / 2) / slope_dx;
-            const int y = mark.y + distance;
-            int ink = 0;
-            if (x < 28 || x >= 452 || y < 20 || y >= 251)
+            const int ink = cell_ink(frame, bars[7 + col], direction, layout, pitch, row);
+            if (ink < 0)
                 return 0;
-            for (int dy = -3; dy <= 3; ++dy)
-                for (int dx = -1; dx <= 1; ++dx)
-                    ink += black_ink(frame, x + dx, y + dy);
             if (ink > best) {
                 second = best;
                 best = ink;
@@ -125,8 +175,7 @@ int omr_front(const uint16_t *frame, const OmrLayout *layout,
             } else if (ink > second)
                 second = ink;
         }
-        answers[row] = best < 6 ? OMR_BLANK :
-                      (best < 9 || second >= 6 || best - second < 5) ? OMR_REVIEW : selected;
+        answers[row] = choose_mark(best, second, selected);
     }
     return 1;
 }

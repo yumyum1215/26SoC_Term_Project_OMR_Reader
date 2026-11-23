@@ -1,5 +1,6 @@
 #include "omr_storage.h"
 #include "ff.h"
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -28,6 +29,24 @@ static int read_text(const char *path, char *text, UINT capacity)
     return read_status == FR_OK && close_status == FR_OK && size < capacity - 1U;
 }
 
+static int layout_valid(long first, long step)
+{
+    return first >= 2500 && first <= 5500 && step >= 800 && step <= 1700;
+}
+
+static int parse_layout(char *text, OmrLayout *layout)
+{
+    char *end;
+    const long first = strtol(text, &end, 10);
+    if (end == text)
+        return 0;
+    char *second = end;
+    const long step = strtol(second, &end, 10);
+    if (end == second || !layout_valid(first, step))
+        return 0;
+    *layout = (OmrLayout){(int)first, (int)step};
+    return 1;
+}
 static int parse_exam(char *text, OmrExam *exam)
 {
     char *cursor = text;
@@ -40,8 +59,12 @@ static int parse_exam(char *text, OmrExam *exam)
         values[i] = (int)value;
         cursor = end;
     }
+    while (isspace((unsigned char)*cursor))
+        ++cursor;
+    if (*cursor)
+        return 0;
     exam->layout = (OmrLayout){values[0], values[1]};
-    if (values[0] < 2500 || values[0] > 5500 || values[1] < 800 || values[1] > 1700)
+    if (!layout_valid(values[0], values[1]))
         return 0;
     for (unsigned i = 0; i < 2; ++i) {
         const unsigned offset = 2 + i * 4;
@@ -77,7 +100,7 @@ int omr_storage_clear(OmrRound *round)
     return 1;
 }
 
-int omr_storage_open(OmrExam *exam, OmrRound *round)
+int omr_storage_open(OmrLayout *subject_layout, OmrRound *round)
 {
     DIR dir;
     FILINFO item;
@@ -85,7 +108,7 @@ int omr_storage_open(OmrExam *exam, OmrRound *round)
     *round = (OmrRound){0, 0, 0};
     if (f_mount(&sd, "0:", 1) != FR_OK ||
         !read_text("0:/KEY.TXT", settings, sizeof settings) ||
-        !parse_exam(settings, exam) ||
+        !parse_layout(settings, subject_layout) ||
         f_opendir(&dir, "0:/") != FR_OK)
         return 0;
 
@@ -120,6 +143,18 @@ int omr_storage_open(OmrExam *exam, OmrRound *round)
     return scan == FR_OK;
 }
 
+int omr_storage_load_subject(unsigned subject, OmrExam *exam)
+{
+    char path[16], settings[320];
+    OmrExam loaded;
+    if (subject > 99U)
+        return 0;
+    snprintf(path, sizeof path, "0:/KEY%02u.TXT", subject);
+    if (!read_text(path, settings, sizeof settings) || !parse_exam(settings, &loaded))
+        return 0;
+    *exam = loaded;
+    return 1;
+}
 int omr_storage_duplicate(const OmrRound *round, const char *id)
 {
     char path[48];
@@ -166,7 +201,7 @@ static int save_bmp(const char *path, const uint16_t *frame)
 }
 
 int omr_storage_save(OmrRound *round, const char *id, const char *name,
-                     const char *timestamp, unsigned score, int review,
+                     const char *timestamp, unsigned subject, unsigned score, int review,
                      const int answers[12], const uint16_t *front,
                      const uint16_t *back)
 {
@@ -187,9 +222,9 @@ int omr_storage_save(OmrRound *round, const char *id, const char *name,
         return 0;
 
     const int size = snprintf(record, sizeof record,
-        "%u\r\nID=%s\r\nNAME=%s\r\nRTC=%s\r\n"
+        "%u\r\nID=%s\r\nNAME=%s\r\nSUBJECT=%02u\r\nRTC=%s\r\n"
         "STATUS=%s\r\nANSWER=%d %d %d %d %d %d %d %d %d %d / %d %d\r\n",
-        score, id, name, timestamp, review ? "REVIEW" : "GRADED", answers[0], answers[1], answers[2], answers[3],
+        score, id, name, subject, timestamp, review ? "REVIEW" : "GRADED", answers[0], answers[1], answers[2], answers[3],
         answers[4], answers[5], answers[6], answers[7], answers[8], answers[9],
         answers[10], answers[11]);
     result_path(temp, round->round, id, "RESULT.TMP");

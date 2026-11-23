@@ -41,6 +41,8 @@ typedef enum { FRONT_IDLE, BACK_ALIGN, RESULT, SUMMARY, CLEARED, ERROR } State;
 static uint16_t front[OMR_WIDTH * OMR_HEIGHT], back[OMR_WIDTH * OMR_HEIGHT];
 static int answers[12];
 static OmrExam exam;
+static OmrLayout subject_layout;
+static unsigned active_subject;
 static OmrRound round_info;
 static XScuGic gic;
 static XIicPs rtc;
@@ -275,7 +277,7 @@ static int save_score(unsigned *score)
     }
     rtc_timestamp(stamp);
     if (!omr_storage_save(&round_info, student_id, student_name, stamp,
-                          *score, review, answers, front, back))
+                          active_subject, *score, review, answers, front, back))
         return 0;
     return review ? -1 : 1;
 }
@@ -291,7 +293,7 @@ int main(void)
         rtc_ready = XIicPs_SetSClk(&rtc, 100000) == XST_SUCCESS;
 
     screen("OMR STARTUP", "INIT SD/CAMERA");
-    sd_ready = omr_storage_open(&exam, &round_info);
+    sd_ready = omr_storage_open(&subject_layout, &round_info);
     Xil_Out32(SERVO, FRONT_PULSE_US);
     video_write(0);
     summary_digits();
@@ -357,13 +359,26 @@ int main(void)
                     state = ERROR;
                     until = after_ms(2200);
                 } else if (state == FRONT_IDLE && capture_aligned(front)) {
-                    if (omr_front(front, &exam.layout, answers)) {
+                    const int subject = omr_subject(front, &subject_layout);
+                    char key_name[17];
+                    if (subject < 0 || subject > 99) {
+                        screen("SUBJECT CODE ERR", "CHECK TWO DIGITS");
+                    } else if (!omr_storage_load_subject((unsigned)subject, &exam)) {
+                        snprintf(key_name, sizeof key_name, "KEY%02u.TXT", (unsigned)subject);
+                        screen("CHECK ANSWER KEY", key_name);
+                    } else if (!omr_front(front, &exam.layout, answers)) {
+                        screen("FRONT MARK ERROR", "REALIGN AND TRY");
+                    } else {
+                        active_subject = (unsigned)subject;
+                        snprintf(key_name, sizeof key_name, "SUBJECT %02u", active_subject);
+                        serial(key_name);
+                        serial("\r\n");
                         Xil_Out32(SERVO, BACK_PULSE_US);
                         state = BACK_ALIGN;
                         until = after_ms(SETTLE_MS);
                         old_ready = -1;
-                    } else {
-                        screen("FRONT MARK ERROR", "REALIGN AND TRY");
+                    }
+                    if (state == FRONT_IDLE) {
                         state = ERROR;
                         until = after_ms(2200);
                     }
