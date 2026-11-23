@@ -3,7 +3,13 @@
 
 #include "omr_grading.h"
 
-enum { OMR_FIRST_SUBJECT = 1, OMR_LAST_SUBJECT = 6 };
+enum { OMR_FIRST_SUBJECT = 1, OMR_LAST_SUBJECT = 6, OMR_TEST_SUBJECT = 10 };
+
+static inline int omr_subject_supported(int subject)
+{
+    return (subject >= OMR_FIRST_SUBJECT && subject <= OMR_LAST_SUBJECT) ||
+           subject == OMR_TEST_SUBJECT;
+}
 
 typedef struct {
     OmrLayout layout;
@@ -35,4 +41,3 @@ int omr_storage_save(const char *id, const char *name,
                      const uint16_t *back);
 
 #endif
-

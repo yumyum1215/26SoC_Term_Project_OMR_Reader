@@ -18,8 +18,8 @@ static void subject_path(char root[16], unsigned subject)
 
 static int subject_directory(const char *name)
 {
-    return strlen(name) == 3 && name[0] == 'S' && name[1] == '0' &&
-           name[2] >= '1' && name[2] <= '6';
+    return strlen(name) == 3 && name[0] == 'S' && omr_subject_supported(10 * (name[1] - '0') + (name[2] - '0')) &&
+           isdigit((unsigned char)name[1]) && isdigit((unsigned char)name[2]);
 }
 
 static unsigned student_slot(const char *id)
@@ -284,7 +284,10 @@ int omr_storage_summary(OmrSummary *summary)
         if (!recover_directory(root) || !scan_results(root, subject, count_result, &result))
             return 0;
     }
-    if (!recover_directory(DATA_DIR) || !scan_results(DATA_DIR, 0, count_result, &result))
+    char test_root[16];
+    subject_path(test_root, OMR_TEST_SUBJECT);
+    if (!recover_directory(test_root) || !recover_directory(DATA_DIR) ||
+        !scan_results(DATA_DIR, 0, count_result, &result))
         return 0;
     *summary = result;
     return 1;
@@ -321,7 +324,7 @@ int omr_storage_load_subject(unsigned subject, OmrExam *exam)
 {
     char path[16], settings[320];
     OmrExam loaded;
-    if (subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT)
+    if (!omr_subject_supported((int)subject))
         return 0;
     snprintf(path, sizeof path, "0:/KEY%02u.TXT", subject);
     if (!read_text(path, settings, sizeof settings) || !parse_exam(settings, &loaded))
@@ -377,7 +380,7 @@ int omr_storage_save(const char *id, const char *name,
     FIL file;
     FILINFO info;
     if (!student_record(id) || id[0] != 'G' ||
-        subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT)
+        !omr_subject_supported((int)subject))
         return 0;
     subject_path(root, subject);
     const FRESULT folder_status = f_mkdir(root);

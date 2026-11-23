@@ -434,8 +434,8 @@ int main(void)
                     if (!candidate_id[0]) {
                         screen("STUDENT ID ERROR", "CHECK CARD MARKS");
 
-                    } else if (subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT) {
-                        screen("SUBJECT CODE ERR", "USE CODES 01-06");
+                    } else if (!omr_subject_supported(subject)) {
+                        screen("SUBJECT CODE ERR", "USE 01-06 OR 10");
                     } else if (!omr_storage_load_subject((unsigned)subject, &exam)) {
                         snprintf(key_name, sizeof key_name, "KEY%02u.TXT", (unsigned)subject);
                         screen("CHECK ANSWER KEY", key_name);
@@ -448,7 +448,8 @@ int main(void)
                         snprintf(key_name, sizeof key_name, "SUBJECT %02u", active_subject);
                         serial(key_name);
                         serial(" ");
-                        serial(subject_names[active_subject - OMR_FIRST_SUBJECT]);
+                        serial(active_subject == OMR_TEST_SUBJECT ? "TEST" :
+                               subject_names[active_subject - OMR_FIRST_SUBJECT]);
                         serial("\r\n");
                         unsigned score = 0;
                         for (unsigned i = 0; i < OMR_QUESTIONS; ++i) {
