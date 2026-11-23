@@ -39,7 +39,7 @@
 #define BACK_PULSE_US 1600U
 #define SETTLE_MS 800U
 
-typedef enum { FRONT_IDLE, BACK_ALIGN, RESULT, SUMMARY, CLEARED, ERROR } State;
+typedef enum { FRONT_IDLE, FRONT_RESULT, BACK_ALIGN, RESULT, SUMMARY, CLEARED, ERROR } State;
 
 static uint16_t front[OMR_WIDTH * OMR_HEIGHT], back[OMR_WIDTH * OMR_HEIGHT];
 static int answers[12];
@@ -307,6 +307,15 @@ static void card_student_id(const OmrIdentity *identity, char id[9])
     id[7] = (char)('0' + identity->student_number % 10);
     id[8] = '\0';
 }
+static void show_score(const char *id, unsigned score)
+{
+    char score_line[17];
+    snprintf(score_line, sizeof score_line, "SCORE %u", score);
+    screen(id, score_line);
+    Xil_Out32(FND, bcd4(score));
+    tft_view(1);
+}
+
 static int save_score(unsigned *score)
 {
     char stamp[32];
@@ -441,10 +450,15 @@ int main(void)
                         serial(" ");
                         serial(subject_names[active_subject - OMR_FIRST_SUBJECT]);
                         serial("\r\n");
+                        unsigned score = 0;
+                        for (unsigned i = 0; i < OMR_QUESTIONS; ++i) {
+                            if (answers[i] == exam.key[i])
+                                score += exam.points[i];
+                        }
+                        show_score(student_id, score);
                         Xil_Out32(SERVO, BACK_PULSE_US);
-                        state = BACK_ALIGN;
-                        until = after_ms(SETTLE_MS);
-                        old_ready = -1;
+                        state = FRONT_RESULT;
+                        until = after_ms(2600);
                     }
                     if (state == FRONT_IDLE) {
                         state = ERROR;
@@ -455,11 +469,7 @@ int main(void)
                     omr_back(back, exam.back_boxes, answers + 10);
                     const int saved = save_score(&score);
                     if (saved == 1) {
-                        char score_line[17];
-                        snprintf(score_line, sizeof score_line, "SCORE %u", score);
-                        screen(student_id, score_line);
-                        Xil_Out32(FND, bcd4(score));
-                        tft_view(1);
+                        show_score(student_id, score);
                         student_id[0] = 0;
                         state = RESULT;
                     } else {
@@ -470,6 +480,16 @@ int main(void)
                     until = after_ms(2600);
                 }
                 (void)take_buttons();
+            }
+        } else if (state == FRONT_RESULT) {
+            if (events & BUTTON_CLEAR_CANCEL) {
+                screen("CANCELLED", "RETURNING FRONT");
+                state = ERROR;
+                until = after_ms(1500);
+            } else if (passed(until)) {
+                tft_view(0);
+                state = BACK_ALIGN;
+                old_ready = -1;
             }
         } else if (state == SUMMARY && graph.student != 0 && passed(until) &&
                    omr_storage_next_graph(graph.student, &graph)) {
@@ -487,5 +507,3 @@ int main(void)
             tft_view(4);
     }
 }
-
-
