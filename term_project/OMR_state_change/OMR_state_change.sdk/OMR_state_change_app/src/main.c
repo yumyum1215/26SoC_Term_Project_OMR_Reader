@@ -43,6 +43,10 @@ static int answers[12];
 static OmrExam exam;
 static OmrLayout subject_layout;
 static unsigned active_subject;
+static const char *const subject_names[OMR_LAST_SUBJECT] = {
+    "KOREAN", "MATH", "ENGLISH", "KOREAN HISTORY",
+    "INTEGRATED SCIENCE", "INTEGRATED SOCIAL STUDIES"
+};
 static OmrRound round_info;
 static XScuGic gic;
 static XIicPs rtc;
@@ -361,8 +365,8 @@ int main(void)
                 } else if (state == FRONT_IDLE && capture_aligned(front)) {
                     const int subject = omr_subject(front, &subject_layout);
                     char key_name[17];
-                    if (subject < 0 || subject > 99) {
-                        screen("SUBJECT CODE ERR", "CHECK TWO DIGITS");
+                    if (subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT) {
+                        screen("SUBJECT CODE ERR", "USE CODES 01-06");
                     } else if (!omr_storage_load_subject((unsigned)subject, &exam)) {
                         snprintf(key_name, sizeof key_name, "KEY%02u.TXT", (unsigned)subject);
                         screen("CHECK ANSWER KEY", key_name);
@@ -372,6 +376,8 @@ int main(void)
                         active_subject = (unsigned)subject;
                         snprintf(key_name, sizeof key_name, "SUBJECT %02u", active_subject);
                         serial(key_name);
+                        serial(" ");
+                        serial(subject_names[active_subject - OMR_FIRST_SUBJECT]);
                         serial("\r\n");
                         Xil_Out32(SERVO, BACK_PULSE_US);
                         state = BACK_ALIGN;

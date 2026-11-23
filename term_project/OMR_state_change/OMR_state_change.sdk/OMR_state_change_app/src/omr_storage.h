@@ -3,6 +3,8 @@
 
 #include "omr_grading.h"
 
+enum { OMR_FIRST_SUBJECT = 1, OMR_LAST_SUBJECT = 6 };
+
 typedef struct {
     OmrLayout layout;
     OmrBox back_boxes[2];

@@ -147,7 +147,7 @@ int omr_storage_load_subject(unsigned subject, OmrExam *exam)
 {
     char path[16], settings[320];
     OmrExam loaded;
-    if (subject > 99U)
+    if (subject < OMR_FIRST_SUBJECT || subject > OMR_LAST_SUBJECT)
         return 0;
     snprintf(path, sizeof path, "0:/KEY%02u.TXT", subject);
     if (!read_text(path, settings, sizeof settings) || !parse_exam(settings, &loaded))

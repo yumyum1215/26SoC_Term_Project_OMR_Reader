@@ -11,7 +11,7 @@ vivado -mode batch -source .\OMR_state_change\build_servo.tcl
 
 - Vivado는 `OMR_state_change.runs/impl_1/system_wrapper.bit`와 `OMR_state_change.sdk/system_wrapper.hdf`를 생성한다.
 - SDK 스크립트는 `OMR_state_change.sdk/OMR_state_change_app/Debug/OMR_state_change_app.elf`를 생성한다. JTAG에서 HDF로 PS 초기화를 수행하고, 해당 비트스트림과 ELF를 같은 세션에서 실행한다.
-- FAT32 SD 카드 루트에 공통 과목코드 위치를 담은 `KEY.TXT`와 과목별 `KEY00.TXT`~`KEY99.TXT` 중 사용할 파일을 넣는다. 예를 들어 코드 `07`은 `KEY07.TXT`를 읽는다.
+- FAT32 SD 카드 루트에 공통 과목코드 위치를 담은 `KEY.TXT`와 과목별 `KEY01.TXT`~`KEY06.TXT` 중 사용할 파일을 넣는다. 예를 들어 코드 `02`는 `KEY02.TXT`를 읽는다.
 - UART 115200, 8N1에서 `TOTAL 30`과 `ID 20221139 HYEONSEO` 같은 명령을 보낸다. 학번은 숫자 1~8자리, 이름은 ASCII 1~32자다.
 
 ## 조작 순서
@@ -25,9 +25,18 @@ vivado -mode batch -source .\OMR_state_change\build_servo.tcl
 
 ## SD 카드 정답지
 
+| 코드 | 과목 | SD 카드 정답 파일 |
+| --- | --- | --- |
+| `01` | 국어 | `KEY01.TXT` |
+| `02` | 수학 | `KEY02.TXT` |
+| `03` | 영어 | `KEY03.TXT` |
+| `04` | 한국사 | `KEY04.TXT` |
+| `05` | 통합과학 | `KEY05.TXT` |
+| `06` | 통합사회 | `KEY06.TXT` |
+
 `KEY.TXT`에는 과목코드 0행 위치와 행 간격을 천분율로 적는다. 기본값은 `4200 1220`이다. 기존 `KEY.example.txt`를 공통 `KEY.TXT`로 복사해도 첫 두 숫자만 사용한다.
 
-`KEY.example.txt`를 사용할 과목코드에 맞춰 `KEY07.TXT` 같은 이름으로 한 번 더 복사하고, 아래 형식대로 과목별 정답을 설정한다. 두 자리 파일명을 사용한다. 과목 파일은 앞면을 촬영할 때마다 읽으며, 로드한 설정은 뒷면 채점까지 적용된다. 과목코드가 비어 있거나 복수로 마킹됐거나 파일이 없거나 손상됐으면 뒤집기 전에 오류를 표시한다. `RESULT.TXT`와 `REVIEW.TXT`에 `SUBJECT=07` 형태로 저장한다.
+`KEY.example.txt`를 사용할 과목코드에 맞춰 `KEY02.TXT` 같은 이름으로 한 번 더 복사하고, 아래 형식대로 과목별 정답을 설정한다. 두 자리 파일명을 사용한다. 과목 파일은 앞면을 촬영할 때마다 읽으며, 로드한 설정은 뒷면 채점까지 적용된다. 과목코드가 비어 있거나 복수로 마킹됐거나 코드가 `01`~`06` 범위 밖이거나 파일이 없거나 손상됐으면 뒤집기 전에 오류를 표시한다. `RESULT.TXT`와 `REVIEW.TXT`에 `SUBJECT=02` 형태로 저장한다.
 
 ### 과목별 `KEYnn.TXT` 형식
 
