@@ -21,4 +21,7 @@ set impl_dir [get_property DIRECTORY [get_runs impl_1]]
 set sdk_dir [file join $root OMR_state_change.sdk]
 file mkdir $sdk_dir
 file copy -force [file join $impl_dir system_wrapper.sysdef] [file join $sdk_dir system_wrapper.hdf]
+# Keep the PS initialization script paired with the freshly exported hardware.
+set ps_init [file join $root OMR_state_change.srcs sources_1 bd system ip system_processing_system7_0_0 ps7_init.tcl]
+file copy -force $ps_init [file join $sdk_dir ps7_init.tcl]
 close_project

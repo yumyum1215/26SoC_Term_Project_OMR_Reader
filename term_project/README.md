@@ -9,8 +9,8 @@ vivado -mode batch -source .\OMR_state_change\build_servo.tcl
 .\OMR_state_change\build_sdk.ps1
 ```
 
-- Vivado는 `OMR_state_change.runs/impl_1/system_wrapper.bit`와 `OMR_state_change.sdk/system_wrapper.hdf`를 생성한다.
-- SDK 스크립트는 `OMR_state_change.sdk/OMR_state_change_app/Debug/OMR_state_change_app.elf`를 생성한다. JTAG에서 HDF로 PS 초기화를 수행하고, 해당 비트스트림과 ELF를 같은 세션에서 실행한다.
+- Vivado는 `OMR_state_change.runs/impl_1/system_wrapper.bit`, `OMR_state_change.sdk/system_wrapper.hdf`, `OMR_state_change.sdk/ps7_init.tcl`을 생성한다. PS DDR 모델과 배선 지연은 RPS-Z7020-TK의 TFT 실습 설정을 사용한다.
+- SDK 스크립트는 `OMR_state_change.sdk/OMR_state_change_app/Debug/OMR_state_change_app.elf`를 생성한다. JTAG에서는 같은 Vivado 빌드의 `ps7_init.tcl`로 DDR과 SDIO 클록을 초기화하고, 해당 비트스트림과 ELF를 실행한다.
 - FAT32 SD 카드 루트에 공통 과목코드 위치를 담은 `KEY.TXT`와 과목별 `KEY01.TXT`~`KEY06.TXT` 중 사용할 파일을 넣는다. 예를 들어 코드 `02`는 `KEY02.TXT`를 읽는다.
 - UART 115200, 8N1의 `TOTAL 30`은 전체 응시자 수 설정용이다. 학생은 OMR의 학년·반·번호로 식별한다. 이름도 남기려면 앞면 대기 중 `ID 10203 HYEONSEO`처럼 학년 1자리·반 2자리·번호 2자리와 ASCII 이름을 입력한다. 판독한 학생과 일치할 때만 이름이 기록된다.
 
@@ -66,4 +66,4 @@ FAT32 SD 카드 루트에 [KEY.TXT](sd-test/KEY.TXT)와 [KEY10.TXT](sd-test/KEY1
 
 앞면 기본값은 제공된 카드 사진에서 구했다. 객관식은 사진의 상단 검은 막대 27개 중 8~12번째에 해당하는 1~10번 구역을 읽는다. 뒷면 예시 좌표는 사진의 왼쪽 답란 첫째 줄과 둘째 줄을 기준으로 잡았다. 실제 촬영 프레임에서 맞춰야 할 영역은 [뒷면 답란 사진](../docs/omr-card.md#뒷면-주관식-답란)을 참고한다. 주관식은 ARM에서 정수 CNN을 실행한다. 모델 학습 코드는 `OMR_state_change/train_digits.py`에 있으며 [UCI Optdigits](https://doi.org/10.24432/C50P49) 학습·시험 데이터를 사용한다.
 
-서보는 J14 14번(GPIO6, P20)에 PWM을 출력한다. J14 13번과 서보 전원 GND를 공유한다. FPGA는 20 ms 주기로 544–2400 µs 범위의 PWM 명령을 처리한다. 앞면 1400 µs, 뒷면 1600 µs, 안정화 800 ms는 시험용 초기값이다. 실제 회전 틀을 사용할 때는 서보의 가동 범위 안에서 두 위치를 보정한다. 서보를 연결하지 않고 손으로 뒤집어 나머지 흐름을 검증할 수 있다.
+서보는 J14 14번(GPIO6, P20)에 PWM을 출력한다. J14 13번과 서보 전원 GND를 공유한다. FPGA는 20 ms 주기로 544–2400 µs 범위의 PWM 명령을 처리한다. 앞면은 544 µs, 뒷면은 2400 µs로 명령하고 복귀 안정화에 800 ms를 둔다. 실제 회전 틀을 사용할 때는 서보의 가동 범위 안에서 두 위치를 보정한다. 서보를 연결하지 않고 손으로 뒤집어 나머지 흐름을 검증할 수 있다.
