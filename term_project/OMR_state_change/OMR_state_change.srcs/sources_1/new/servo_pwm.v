@@ -17,7 +17,7 @@ module servo_pwm (
             pwm <= 0;
         end else if (frame_count == FRAME_LAST) begin
             frame_count <= 0;
-            if (pulse_us >= 12'd1000 && pulse_us <= 12'd2000) begin
+            if (pulse_us >= 12'd544 && pulse_us <= 12'd2400) begin
                 pulse_ticks <= requested_ticks;
                 pwm <= 1;
             end else begin

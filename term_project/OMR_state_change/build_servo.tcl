@@ -9,6 +9,7 @@ update_compile_order -fileset sources_1
 
 # Vivado 2019.1 can retain the module reference checkpoint after RTL-only edits.
 reset_run system_omr_video_0_0_synth_1
+reset_run system_servo_pwm_0_0_synth_1
 reset_run synth_1
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
